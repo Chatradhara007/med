@@ -1,0 +1,323 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: CareThread - Patient-side record for one episode of care (24-hour AWS Hackathon)
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 60
+    MemorySize: 1024
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref RecordTable
+        DOC_BUCKET: !Ref DocBucket
+        AWS_ACCOUNT_ID: !Ref "AWS::AccountId"
+
+Parameters:
+  BedrockModelId:
+    Type: String
+    Default: anthropic.claude-3-5-sonnet-20240620-v1:0
+    Description: Bedrock Model ID for clinical extraction
+  DemoMode:
+    Type: String
+    Default: "false"
+    Description: Enable 30-second reminder schedule compression for demonstrations
+  DemoReminderDelaySeconds:
+    Type: Number
+    Default: 30
+    Description: Demo mode reminder countdown delay in seconds
+
+Resources:
+  # 1. Canonical Single-Table DynamoDB
+  RecordTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: carethread
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: PK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # 2. S3 Document Storage with EventBridge Enabled
+  DocBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub carethread-docs-${AWS::AccountId}
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [PUT, GET, POST, HEAD]
+            AllowedOrigins: ['*']
+            AllowedHeaders: ['*']
+            MaxAge: 3600
+
+  # 3. Cognito Auth
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: carethread-user-pool
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+          RequireUppercase: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: carethread-web-client
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+
+  # 4. HTTP API Gateway with JWT Authorizer
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowMethods: [GET, POST, PATCH, OPTIONS]
+        AllowHeaders: [Authorization, Content-Type, x-patient-id]
+        AllowOrigins: ['*']
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+              audience: [!Ref UserPoolClient]
+
+  # 5. SNS Notification Topic for Reminders
+  ReminderTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: carethread-reminders-topic
+      DisplayName: CareThread Care Plan Reminders
+
+  # 6. Reminder Lambda Handler (EventBridge -> SNS)
+  ReminderFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../modules/reminders/
+      Handler: handler.lambda_handler
+      Timeout: 30
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref RecordTable
+          SNS_TOPIC_ARN: !Ref ReminderTopic
+          DEMO_MODE: !Ref DemoMode
+          DEMO_REMINDER_DELAY_SECONDS: !Ref DemoReminderDelaySeconds
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
+        - SNSPublishMessagePolicy: { TopicName: !GetAtt ReminderTopic.TopicName }
+
+  # 7. API Handlers
+  DocumentsApiFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../api/documents/
+      Handler: app.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
+        - S3CrudPolicy: { BucketName: !Ref DocBucket }
+      Events:
+        CreateDoc:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /documents
+            Method: POST
+        GetDoc:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /documents/{id}
+            Method: GET
+
+  RecordApiFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../api/record/
+      Handler: app.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
+      Events:
+        GetRecord:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /record
+            Method: GET
+        PatchField:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /record/field
+            Method: PATCH
+        DonePlan:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /plan/{day}/{slot}/done
+            Method: POST
+
+  SubstitutionApiFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../api/substitution/
+      Handler: app.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref RecordTable }
+      Events:
+        CheckSub:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /substitution
+            Method: POST
+
+  # 8. Step Functions Pipeline Lambdas
+  RasteriseFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../pipeline/rasterise/
+      Handler: app.handler
+      Timeout: 120
+      MemorySize: 2048
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref DocBucket }
+        - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
+
+  ClassifyFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../pipeline/classify/
+      Handler: app.handler
+      Timeout: 60
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+      Policies:
+        - S3ReadPolicy: { BucketName: !Ref DocBucket }
+        - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource:
+                - !Sub 'arn:aws:bedrock:*::foundation-model/*'
+                - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*'
+                - !Sub 'arn:aws:bedrock:*::inference-profile/*'
+
+  ExtractFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../pipeline/extract/
+      Handler: app.handler
+      Timeout: 180
+      MemorySize: 2048
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+      Policies:
+        - S3ReadPolicy: { BucketName: !Ref DocBucket }
+        - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource:
+                - !Sub 'arn:aws:bedrock:*::foundation-model/*'
+                - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*'
+                - !Sub 'arn:aws:bedrock:*::inference-profile/*'
+
+  # 9. Step Functions Ingest State Machine
+  IngestPipelineStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: ../pipeline/statemachine/ingest_pipeline.asl.json
+      DefinitionSubstitutions:
+        RasteriseFnArn: !GetAtt RasteriseFn.Arn
+        ClassifyFnArn: !GetAtt ClassifyFn.Arn
+        ExtractFnArn: !GetAtt ExtractFn.Arn
+      Policies:
+        - LambdaInvokePolicy: { FunctionName: !Ref RasteriseFn }
+        - LambdaInvokePolicy: { FunctionName: !Ref ClassifyFn }
+        - LambdaInvokePolicy: { FunctionName: !Ref ExtractFn }
+      Events:
+        RawDocumentUpload:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - aws.s3
+              detail-type:
+                - Object Created
+              detail:
+                bucket:
+                  name:
+                    - !Ref DocBucket
+                object:
+                  key:
+                    - prefix: raw/
+            InputTransformer:
+              InputPathsMap:
+                bucket: $.detail.bucket.name
+                key: $.detail.object.key
+              InputTemplate: '{"bucket": <bucket>, "key": <key>}'
+
+Outputs:
+  ApiUrl:
+    Description: HTTP API Gateway Endpoint URL
+    Value: !GetAtt HttpApi.ApiEndpoint
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+  ClientId:
+    Description: Cognito User Pool App Client ID
+    Value: !Ref UserPoolClient
+  BucketName:
+    Description: CareThread S3 Document Bucket Name
+    Value: !Ref DocBucket
+  ReminderTopicArn:
+    Description: CareThread Reminder SNS Topic ARN
+    Value: !Ref ReminderTopic
+  StateMachineArn:
+    Description: Ingest Pipeline State Machine ARN
+    Value: !Ref IngestPipelineStateMachine

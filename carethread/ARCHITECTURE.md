@@ -215,6 +215,52 @@ Structured Substitution Result (SubstitutionAnalysisResult / SubstitutionRespons
 - Extractions from blister pack scans retain unbroken provenance citations (`doc_id`, `page`, `bbox`, `verbatim`, `confidence`).
 - Scans with extraction confidence $< 0.85$ are gated into `NEEDS_REVIEW` state, preventing unverified medicine substitutions.
 
+---
+
+## 8. Reminders Workflow (M5)
+
+The CareThread reminders engine bridges the patient's post-discharge care plan with automated, timely, and privacy-preserving notifications over AWS EventBridge and Amazon SNS.
+
+### 8.1 Workflow Architecture
+
+```text
+PlanEntry (Day-by-day care schedule slots in Single Table)
+   ↓
+ReminderService (Deduplicates slots, calculates trigger times)
+   ↓
+EventBridge Scheduler (One-time targeted invocation schedules)
+   ↓
+Reminder Handler (AWS Lambda)
+   ├─ 1. Canonical Context Fetch (get_patient_context)
+   ├─ 2. Idempotency Verification (REMINDER#<id> status check)
+   ├─ 3. Adherence Check (plan_entry.done == True -> SUPPRESSED_COMPLETED)
+   └─ 4. Non-Sensitive Message Assembly
+   ↓
+Amazon SNS (Secure notification delivery via Topic or SMS)
+   ↓
+Patient Device (CareThread notification)
+```
+
+### 8.2 Production vs. Demo Mode Scheduling
+- **Production Mode:** Trigger timestamps are scheduled based on target dates (`day_index` offset from discharge) and standardized slot hours: Morning (08:00 UTC), Afternoon (13:00 UTC), Evening (18:00 UTC), Night (21:00 UTC).
+- **Demo Mode (`DEMO_MODE=true`):** To facilitate live judging and rapid end-to-end evaluation, trigger timestamps are compressed into a deterministic 30-second delay (`base_time + 30 seconds`).
+
+### 8.3 Adherence Suppression
+- Before dispatching any notification, the Lambda handler inspects the patient's canonical care plan (`context.plan_entries`).
+- If the patient has already marked the scheduled dose as completed (`plan_entry.done == True`), the reminder is automatically suppressed (`status = SUPPRESSED_COMPLETED`).
+- Suppressed reminders record the suppression state in the single table (`REMINDER#<reminder_id>`) and dispatch zero SNS messages.
+
+### 8.4 Strict Idempotency Guarantee
+- Invocations are keyed by `reminder_id` (e.g. `<patient_id>-d<day>-<slot>`) and tracked under `PK = PATIENT#<patient_id>`, `SK = REMINDER#<reminder_id>`.
+- Any subsequent or duplicate EventBridge trigger for an already processed reminder (sent, suppressed, or skipped) immediately aborts with `DUPLICATE_SKIPPED` without duplicate notifications.
+
+### 8.5 Privacy & HIPAA Non-Disclosure Protection
+- Notification messages dispatched to external channels (push/SMS) must never expose protected health information (PHI).
+- Disallowed content: diagnosis names (e.g. CAD, diabetes, hypertension), laboratory analyte values (e.g. creatinine, troponin), drug names, or specific dosages.
+- Outgoing payload standard: Generic recovery reminders directing the patient to open the authenticated CareThread application (e.g. *"CareThread reminder: It is time for your Morning care-plan activities. Please check your schedule in the CareThread app."*).
+- `MockNotificationPublisher` enforces automated regex scanning for clinical terms to prevent accidental information leaks.
+
+
 
 
 

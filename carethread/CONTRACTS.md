@@ -2,7 +2,7 @@
 
 > **Contract Freeze Status:** FROZEN  
 > **Primary Source of Truth:** CareThread Build Documentation (24-Hour AWS Hackathon · *Ship It* Track)  
-> **Implementation State:** Shared Schemas & Provenance Invariant Implemented. Downstream modules (DynamoDB repo, S3 upload, Step Functions, OCR, extraction, care plan, lab interpreter, substitution, reminders) are **NOT IMPLEMENTED YET**.
+> **Implementation State:** Shared Schemas, DynamoDB Repo, S3 Upload, M2 Care Plan, M3 Lab Interpreter, M4 Medicine Substitution, and M5 Reminders are **IMPLEMENTED (PASS)**. M1 Ingestion Pipeline and M6 API Handlers remain pending.
 
 ---
 
@@ -385,5 +385,68 @@ def check_substitution(
 | `interaction_check_status` | `string` | `"available"` or `"unavailable"` |
 | `review_status` | `string` | `"confirmed"` or `"needs_review"` (uncertainty preserved) |
 | `provenance` | `ProvenanceEnvelope \| null`| Source blister pack citation |
+
+---
+
+## 7. M5 — Reminders Contract
+
+> **Implementation State:** Fully Implemented and Validated (20/20 tests passed).  
+> **Primary Workflow:** `PlanEntry -> EventBridge Scheduler -> Reminder Handler (AWS Lambda) -> Amazon SNS`
+
+### 7.1 Single-Table Key Pattern
+Reminders are stored in the canonical CareThread DynamoDB table:
+- **Partition Key (`PK`):** `PATIENT#<patient_id>`
+- **Sort Key (`SK`):** `REMINDER#<reminder_id>`
+
+### 7.2 Reminder Lifecycle States (`ReminderStatus`)
+- `SCHEDULED`: Trigger registered with EventBridge Scheduler.
+- `SENT`: Reminder successfully published to patient notification endpoint.
+- `SUPPRESSED_COMPLETED`: Task adherence verified in canonical record (`plan_entry.done == True`); notification suppressed.
+- `DUPLICATE_SKIPPED`: Duplicate EventBridge invocation detected; skipped to maintain strict idempotency.
+- `FAILED`: Delivery or execution error encountered.
+- `CANCELLED`: Reminder explicitly revoked.
+
+### 7.3 Data Schemas
+
+#### `ReminderEvent` (EventBridge Trigger Payload)
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `reminder_id` | `string` | Unique identifier (e.g. `<patient_id>-d<day>-<slot>`) |
+| `patient_id` | `string` | Target patient identifier |
+| `day_index` | `integer` | Care plan day index (0 to 6) |
+| `slot` | `SlotName` | Target time slot (`morning`, `afternoon`, `evening`, `night`) |
+| `scheduled_time`| `string` | Target ISO 8601 execution timestamp |
+| `demo_mode` | `boolean` | If True, compressed 30-second delay for live judging |
+| `idempotency_key`| `string`| Idempotency token preventing duplicate notifications |
+
+#### `ReminderRecord` (DynamoDB Entity)
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `reminder_id` | `string` | Unique identifier |
+| `patient_id` | `string` | Target patient identifier |
+| `day_index` | `integer` | Care plan day index (0 to 6) |
+| `slot` | `SlotName` | Target slot |
+| `scheduled_time`| `string` | Scheduled trigger timestamp |
+| `status` | `ReminderStatus` | Current lifecycle state |
+| `sent_at` | `string \| null` | ISO timestamp when notification was sent |
+| `created_at` | `string` | ISO timestamp when record was created |
+| `idempotency_key`| `string` | Unique idempotency token |
+
+#### `ReminderExecutionResult` (Handler Response)
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `status_code` | `integer` | HTTP status code (200, 400, 404, 500) |
+| `status` | `ReminderStatus` | Final execution outcome |
+| `reminder_id` | `string` | Processed reminder ID |
+| `message` | `string` | Informational or diagnostic outcome message |
+| `published` | `boolean` | True if an external SNS notification was dispatched |
+| `error` | `string \| null` | Error details if status is FAILED |
+
+### 7.4 Invariants & Safety Constraints
+1. **Adherence Suppression**: If `plan_entry.done == True`, reminder execution terminates with `SUPPRESSED_COMPLETED` and dispatches 0 notifications.
+2. **Strict Idempotency**: Duplicate invocations matching an already-processed `reminder_id` terminate with `DUPLICATE_SKIPPED` and dispatch 0 duplicate notifications.
+3. **Privacy & PHI Protection**: Outgoing notification bodies must NEVER disclose sensitive health details, diagnosis names (CAD, diabetes), lab values (creatinine, troponin), or medication names. Only generic recovery reminders are dispatched.
+4. **Demo Mode Compression**: Setting `demo_mode=True` schedules events with a 30-second delay (`DEMO_REMINDER_DELAY_SECONDS = 30`) to facilitate rapid evaluation.
+
 
 
