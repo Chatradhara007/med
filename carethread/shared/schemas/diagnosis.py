@@ -6,7 +6,7 @@ SK = DIAG#<code_or_slug>
 """
 
 from typing import Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from .provenance import ProvenanceEnvelope
 
 
@@ -29,6 +29,8 @@ class Diagnosis(BaseModel):
     def pk(self, patient_id: str) -> str:
         return f"PATIENT#{patient_id}"
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def sk(self) -> str:
+        """Sort key, serialised so the UI can address this row for PATCH."""
         return f"DIAG#{self.slug}"

@@ -26,7 +26,7 @@ carethread/
 ├── api/             # REST handlers and the unified router
 ├── data/            # curated drug index, NTI list, reference ranges
 ├── infra/           # SAM template
-└── tests/           # 254 tests
+└── tests/           # 257 tests
 ```
 
 ## Local development
@@ -164,6 +164,10 @@ comes from the `sub` claim and is never accepted from the request body.
 - **`POST /plan/generate`** also schedules the reminders and reports
   `reminders_scheduled`. A zero there means the plan was saved but the reminder
   channel is unconfigured.
+- **Every patchable entity carries its own `sk`.** `PATCH /record/{field}`
+  needs one, and it is derived by backend key normalisation the client cannot
+  reproduce. Read it off the entity in `GET /record` -- never rebuild
+  `MED#metformin` in the browser.
 - **`bbox` is `[ymin, xmin, ymax, xmax]` on a 0-1000 grid** — Y first, not
   pixels, not `[x, y, w, h]`. Scale to the rendered image size.
 - **Document status is a ten-state machine.** Poll `GET /documents/{id}` and

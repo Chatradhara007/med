@@ -22,8 +22,8 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m pytest carethread/tests -q
 ```
 
-**254 passed** — 155 module/API tests, 32 ingest-pipeline tests, 25 hardening
-regression tests, 22 frontend-wiring tests, 20 rasterisation tests.
+**257 passed** — 155 module/API tests, 32 ingest-pipeline tests, 25 hardening
+regression tests, 25 frontend-wiring tests, 20 rasterisation tests.
 
 ## Real vs mocked dependencies
 
