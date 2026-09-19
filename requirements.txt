@@ -1,0 +1,8 @@
+# CareThread runtime dependencies (Lambda + local)
+boto3>=1.34.0
+botocore>=1.34.0
+pydantic>=2.6.0
+PyYAML>=6.0.1
+jsonschema>=4.21.0
+pypdf>=4.0.0
+pillow>=10.2.0

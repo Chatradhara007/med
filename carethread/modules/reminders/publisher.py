@@ -5,8 +5,11 @@ detection to enforce HIPAA-compliant non-sensitive messaging.
 """
 
 from abc import ABC, abstractmethod
+import csv
+from functools import lru_cache
 import logging
 import os
+from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional
 
@@ -33,6 +36,70 @@ DISALLOWED_SENSITIVE_KEYWORDS = [
     "mg/dl",
     "mmol/l",
 ]
+
+
+class PrivacyViolationError(ValueError):
+    """Raised when an outgoing notification would disclose clinical detail."""
+
+
+@lru_cache(maxsize=1)
+def _drug_name_tokens() -> frozenset:
+    """Drug names and salts drawn from the curated index and the NTI list.
+
+    Section 8.5 forbids drug names in outgoing notifications, and a hand-written
+    keyword list cannot cover them. The project already ships a vetted index, so
+    the same data backs the privacy rail.
+    """
+    tokens: set = set()
+
+    def _add(text: str) -> None:
+        for part in re.split(r"[\s,;/()]+", (text or "").lower()):
+            cleaned = part.strip().strip(".")
+            # Short fragments ("5", "mg", "sr") would cause false positives.
+            if len(cleaned) >= 5 and cleaned.isalpha():
+                tokens.add(cleaned)
+
+    data_dir = Path(__file__).resolve().parents[2] / "data"
+    for filename, columns in (
+        ("drugs.csv", ("brand", "salt")),
+        ("nti.csv", ("salt", "brand_examples")),
+    ):
+        path = data_dir / filename
+        if not path.exists():
+            logger.warning("Privacy rail could not load %s", path)
+            continue
+        try:
+            with path.open(newline="", encoding="utf-8") as handle:
+                for row in csv.DictReader(handle):
+                    for column in columns:
+                        _add(row.get(column, ""))
+        except OSError as exc:
+            logger.warning("Privacy rail could not read %s: %s", path, exc)
+
+    return frozenset(tokens)
+
+
+def assert_no_phi(message: str) -> None:
+    """Reject any outgoing notification containing protected health information.
+
+    Section 8.5 is non-negotiable and applies to every delivery channel, not
+    just the test double: push and SMS payloads leave the authenticated app and
+    are visible on a lock screen.
+    """
+    lower_msg = (message or "").lower()
+    for kw in DISALLOWED_SENSITIVE_KEYWORDS:
+        # Word boundary search to avoid accidental substring matches
+        if re.search(r"\b" + re.escape(kw) + r"\b", lower_msg):
+            raise PrivacyViolationError(
+                f"Privacy violation: Outgoing notification contains sensitive clinical term '{kw}'"
+            )
+
+    drug_tokens = _drug_name_tokens()
+    for word in re.findall(r"[a-z]+", lower_msg):
+        if word in drug_tokens:
+            raise PrivacyViolationError(
+                f"Privacy violation: Outgoing notification names a medicine ('{word}')"
+            )
 
 
 class NotificationPublisherInterface(ABC):
@@ -96,13 +163,7 @@ class MockNotificationPublisher(NotificationPublisherInterface):
 
     def validate_privacy(self, message: str) -> None:
         """Validate that message does not contain sensitive health details."""
-        lower_msg = message.lower()
-        for kw in DISALLOWED_SENSITIVE_KEYWORDS:
-            # Word boundary search to avoid accidental substring matches
-            if re.search(r"\b" + re.escape(kw) + r"\b", lower_msg):
-                raise ValueError(
-                    f"Privacy violation: Outgoing notification contains sensitive clinical term '{kw}'"
-                )
+        assert_no_phi(message)
 
     def clear(self) -> None:
         self.published_messages.clear()
@@ -119,8 +180,10 @@ class SNSNotificationPublisher(NotificationPublisherInterface):
         default_topic_arn: Optional[str] = None,
     ) -> None:
         self._client = boto_client
-        self.default_topic_arn = default_topic_arn or os.getenv(
-            "REMINDER_SNS_TOPIC_ARN", "arn:aws:sns:us-east-1:123456789012:CareThreadReminderTopic"
+        self.default_topic_arn = (
+            default_topic_arn
+            or os.getenv("SNS_TOPIC_ARN")
+            or os.getenv("REMINDER_SNS_TOPIC_ARN")
         )
 
     @property
@@ -137,7 +200,17 @@ class SNSNotificationPublisher(NotificationPublisherInterface):
         subject: Optional[str] = None,
         attributes: Optional[Dict[str, Any]] = None,
     ) -> PublishResult:
+        # The same rail the mock enforces, applied before anything leaves AWS.
+        assert_no_phi(message)
+        if subject:
+            assert_no_phi(subject)
+
         target = destination or self.default_topic_arn
+        if not target:
+            raise ValueError(
+                "SNS publish requires a destination: set SNS_TOPIC_ARN or pass a target"
+            )
+
         params: Dict[str, Any] = {
             "Message": message,
         }
@@ -176,3 +249,20 @@ class SNSNotificationPublisher(NotificationPublisherInterface):
                 destination=target,
                 error=str(e),
             )
+
+
+def use_mock_delivery() -> bool:
+    """Mock delivery is opt-in locally and impossible inside a Lambda."""
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        return False
+    return os.environ.get("USE_MOCK_AWS", "false").lower() in ("true", "1", "yes")
+
+
+def get_notification_publisher(
+    topic_arn: Optional[str] = None,
+) -> NotificationPublisherInterface:
+    """Return the publisher for the current environment. Real SNS by default."""
+    if use_mock_delivery():
+        logger.warning("USE_MOCK_AWS is set; reminder delivery is mocked")
+        return MockNotificationPublisher()
+    return SNSNotificationPublisher(default_topic_arn=topic_arn)

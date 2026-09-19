@@ -62,6 +62,26 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
             raise InvalidPatientIdError("patient_id must be a non-empty string")
         return patient_id.strip()
 
+    def _query_all(self, **kwargs: Any) -> List[dict]:
+        """Query the table, following LastEvaluatedKey to completion.
+
+        A single Query page caps at 1 MB. A patient with a 7-day plan, a
+        document history and a full lab panel can exceed that, and an
+        unpaginated read would silently return a truncated record -- the
+        canonical context must never be partial.
+        """
+        items: List[dict] = []
+        last_key: Optional[dict] = None
+        while True:
+            page_kwargs = dict(kwargs)
+            if last_key:
+                page_kwargs["ExclusiveStartKey"] = last_key
+            response = self._table.query(**page_kwargs)
+            items.extend(response.get("Items", []))
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                return items
+
     def _validate_provenance(self, entity_name: str, entity: object) -> None:
         """Enforce the one invariant: extracted clinical entities must possess valid provenance."""
         provenance = getattr(entity, "provenance", None)
@@ -128,10 +148,9 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
     def get_document(self, patient_id: str, doc_id: str) -> Optional[Document]:
         self._validate_patient_id(patient_id)
         try:
-            response = self._table.query(
+            items = self._query_all(
                 KeyConditionExpression=Key("PK").eq(f"PATIENT#{patient_id}") & Key("SK").begins_with("DOC#")
             )
-            items = response.get("Items", [])
             for raw_item in items:
                 clean = from_dynamodb_friendly(raw_item)
                 if clean.get("doc_id") == doc_id:
@@ -143,13 +162,102 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
     def list_documents(self, patient_id: str) -> List[Document]:
         self._validate_patient_id(patient_id)
         try:
-            response = self._table.query(
+            items = self._query_all(
                 KeyConditionExpression=Key("PK").eq(f"PATIENT#{patient_id}") & Key("SK").begins_with("DOC#")
             )
-            docs = [Document.model_validate(from_dynamodb_friendly(it)) for it in response.get("Items", [])]
+            docs = [Document.model_validate(from_dynamodb_friendly(it)) for it in items]
             return sorted(docs, key=lambda d: d.created_at)
         except ClientError as e:
             raise DatabaseError(f"Failed to list documents: {e}") from e
+
+    def update_document(self, document: Document) -> Document:
+        """Advance a document's lifecycle with a targeted, non-destructive update."""
+        self._validate_patient_id(document.patient_id)
+        pages = document.pages if document.pages is not None else []
+        try:
+            self._table.update_item(
+                Key={"PK": document.pk, "SK": document.sk},
+                UpdateExpression=(
+                    "SET #s = :status, #t = :type, #p = :pages, "
+                    "updated_at = :updated_at, error_reason = :error_reason"
+                ),
+                # status/type/pages are DynamoDB reserved words.
+                ExpressionAttributeNames={"#s": "status", "#t": "type", "#p": "pages"},
+                ExpressionAttributeValues=to_dynamodb_friendly(
+                    {
+                        ":status": document.status.value,
+                        ":type": document.type.value,
+                        ":pages": pages,
+                        ":updated_at": document.updated_at,
+                        ":error_reason": document.error_reason,
+                    }
+                ),
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+            )
+            return document
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                raise DocumentNotFoundError(
+                    f"Document {document.doc_id} not found for patient {document.patient_id}"
+                ) from e
+            raise DatabaseError(f"Failed to update document: {e}") from e
+
+    def update_entity_field(
+        self,
+        patient_id: str,
+        sk: str,
+        field: str,
+        value: Any,
+        confirm_provenance: bool = True,
+    ) -> dict:
+        """Targeted single-field update, leaving every other attribute untouched."""
+        self._validate_patient_id(patient_id)
+        pk = f"PATIENT#{patient_id}"
+
+        update_parts = ["#f = :value", "updated_at = :updated_at"]
+        names = {"#f": field}
+        values = {
+            ":value": value,
+            ":updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if confirm_provenance:
+            # Only rewrites the nested status; the source citation is untouched.
+            update_parts.append("#prov.#st = :confirmed")
+            names["#prov"] = "provenance"
+            names["#st"] = "status"
+            values[":confirmed"] = "confirmed"
+
+        def _write(expression: str, attr_names: dict, attr_values: dict) -> dict:
+            return self._table.update_item(
+                Key={"PK": pk, "SK": sk},
+                UpdateExpression="SET " + expression,
+                ExpressionAttributeNames=attr_names,
+                ExpressionAttributeValues=to_dynamodb_friendly(attr_values),
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                ReturnValues="ALL_NEW",
+            )
+
+        try:
+            try:
+                response = _write(", ".join(update_parts), names, values)
+            except ClientError as e:
+                # Entities without a provenance map (a patient PROFILE) cannot
+                # take the nested status write; retry with the field alone.
+                code = e.response.get("Error", {}).get("Code")
+                if not confirm_provenance or code != "ValidationException":
+                    raise
+                response = _write(
+                    "#f = :value, updated_at = :updated_at",
+                    {"#f": field},
+                    {":value": value, ":updated_at": values[":updated_at"]},
+                )
+            return from_dynamodb_friendly(response.get("Attributes", {}))
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                raise EntityNotFoundError(
+                    f"Record entity with SK '{sk}' not found for patient '{patient_id}'"
+                ) from e
+            raise DatabaseError(f"Failed to update {sk}.{field}: {e}") from e
 
     def create_medication(self, patient_id: str, medication: Medication) -> Medication:
         self._validate_patient_id(patient_id)
@@ -166,10 +274,10 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
     def get_medications(self, patient_id: str) -> List[Medication]:
         self._validate_patient_id(patient_id)
         try:
-            response = self._table.query(
+            items = self._query_all(
                 KeyConditionExpression=Key("PK").eq(f"PATIENT#{patient_id}") & Key("SK").begins_with("MED#")
             )
-            return [Medication.model_validate(from_dynamodb_friendly(it)) for it in response.get("Items", [])]
+            return [Medication.model_validate(from_dynamodb_friendly(it)) for it in items]
         except ClientError as e:
             raise DatabaseError(f"Failed to get medications: {e}") from e
 
@@ -189,10 +297,10 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
     def get_lab_results(self, patient_id: str) -> List[LabResult]:
         self._validate_patient_id(patient_id)
         try:
-            response = self._table.query(
+            items = self._query_all(
                 KeyConditionExpression=Key("PK").eq(f"PATIENT#{patient_id}") & Key("SK").begins_with("LAB#")
             )
-            return [LabResult.model_validate(from_dynamodb_friendly(it)) for it in response.get("Items", [])]
+            return [LabResult.model_validate(from_dynamodb_friendly(it)) for it in items]
         except ClientError as e:
             raise DatabaseError(f"Failed to get lab results: {e}") from e
 
@@ -211,10 +319,10 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
     def get_diagnoses(self, patient_id: str) -> List[Diagnosis]:
         self._validate_patient_id(patient_id)
         try:
-            response = self._table.query(
+            items = self._query_all(
                 KeyConditionExpression=Key("PK").eq(f"PATIENT#{patient_id}") & Key("SK").begins_with("DIAG#")
             )
-            return [Diagnosis.model_validate(from_dynamodb_friendly(it)) for it in response.get("Items", [])]
+            return [Diagnosis.model_validate(from_dynamodb_friendly(it)) for it in items]
         except ClientError as e:
             raise DatabaseError(f"Failed to get diagnoses: {e}") from e
 
@@ -233,10 +341,10 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
     def get_plan_entries(self, patient_id: str) -> List[PlanEntry]:
         self._validate_patient_id(patient_id)
         try:
-            response = self._table.query(
+            items = self._query_all(
                 KeyConditionExpression=Key("PK").eq(f"PATIENT#{patient_id}") & Key("SK").begins_with("PLAN#")
             )
-            entries = [PlanEntry.model_validate(from_dynamodb_friendly(it)) for it in response.get("Items", [])]
+            entries = [PlanEntry.model_validate(from_dynamodb_friendly(it)) for it in items]
             return sorted(entries, key=lambda e: (e.day_index, e.slot.value))
         except ClientError as e:
             raise DatabaseError(f"Failed to get plan entries: {e}") from e
@@ -285,10 +393,10 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
     def get_alerts(self, patient_id: str) -> List[FiredAlert]:
         self._validate_patient_id(patient_id)
         try:
-            response = self._table.query(
+            items = self._query_all(
                 KeyConditionExpression=Key("PK").eq(f"PATIENT#{patient_id}") & Key("SK").begins_with("ALERT#")
             )
-            alerts = [FiredAlert.model_validate(from_dynamodb_friendly(it)) for it in response.get("Items", [])]
+            alerts = [FiredAlert.model_validate(from_dynamodb_friendly(it)) for it in items]
             return sorted(alerts, key=lambda a: a.fired_at, reverse=True)
         except ClientError as e:
             raise DatabaseError(f"Failed to get alerts: {e}") from e
@@ -297,10 +405,10 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
         """The canonical single query Query(PK = PATIENT#<id>) loading all patient context in one roundtrip."""
         self._validate_patient_id(patient_id)
         try:
-            response = self._table.query(
+            items = self._query_all(
                 KeyConditionExpression=Key("PK").eq(f"PATIENT#{patient_id}")
             )
-            raw_items = response.get("Items", [])
+            raw_items = items
 
             patient: Optional[Patient] = None
             docs: List[Document] = []

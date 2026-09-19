@@ -346,7 +346,10 @@ def test_uncompleted_dose_dispatches_notification(repo, reminder_service, test_p
     assert len(mock_publisher.published_messages) == 1
 
     msg = mock_publisher.published_messages[0]
-    assert test_patient.patient_id in msg["destination"]
+    # With no SNS_TOPIC_ARN configured the reminder falls back to the patient's
+    # own phone number for direct SMS; it is never a fabricated per-patient ARN.
+    assert msg["destination"] == test_patient.phone
+    assert msg["attributes"]["patient_id"] == test_patient.patient_id
     assert "Morning" in msg["message"]
 
     # Verify status updated to SENT in repository
@@ -555,7 +558,7 @@ def test_publisher_failure_handling(repo, test_patient, sample_envelope, mock_pu
     assert result.error is not None
 
 
-def test_lambda_handler_eventbridge_format():
+def test_lambda_handler_eventbridge_format(monkeypatch):
     """Lambda entrypoint unwraps EventBridge rule event payload properly."""
     eb_event = {
         "detail-type": "CareThread Reminder Trigger",
@@ -569,6 +572,11 @@ def test_lambda_handler_eventbridge_format():
             "idempotency_key": "idem-lambda-1",
         }
     }
+
+    # The Lambda entrypoint talks to real DynamoDB/SNS by default; opt into
+    # the local mocks explicitly for this unit test.
+    monkeypatch.setenv("USE_MOCK_AWS", "true")
+    monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME", raising=False)
 
     res = lambda_handler(eb_event, None)
     assert "statusCode" in res

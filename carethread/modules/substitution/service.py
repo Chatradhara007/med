@@ -39,6 +39,15 @@ from carethread.modules.substitution.extraction_adapter import (
 )
 
 
+def _default_extraction_adapter() -> Optional[MedicineExtractionAdapterInterface]:
+    """Fixture extractions outside AWS only; never inside a deployed function."""
+    import os
+
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        return None
+    return MockMedicineExtractionAdapter()
+
+
 class SubstitutionService:
     """Core domain service for evaluating pharmacy drug substitutions."""
 
@@ -54,7 +63,12 @@ class SubstitutionService:
         self.drug_index = drug_index or get_default_drug_index()
         self.nti_repo = nti_repo or get_default_nti_repo()
         self.interaction_checker = interaction_checker or InteractionChecker()
-        self.extraction_adapter = extraction_adapter or MockMedicineExtractionAdapter()
+        # A real strip extractor needs the authenticated patient scope, so the
+        # API layer injects it per request. Direct construction falls back to
+        # fixtures only outside AWS; in a Lambda it stays unset and a scan
+        # without an injected adapter fails loudly rather than returning
+        # fixture data for a real patient's photo.
+        self.extraction_adapter = extraction_adapter or _default_extraction_adapter()
 
     def check_substitution(
         self,
@@ -72,6 +86,11 @@ class SubstitutionService:
 
         # 1. Resolve medicine details (via blister pack OCR doc_id or direct input)
         if doc_id:
+            if self.extraction_adapter is None:
+                raise RuntimeError(
+                    "No medicine extraction adapter configured for this request; "
+                    "a strip scan cannot be read"
+                )
             extraction = self.extraction_adapter.extract_from_document(doc_id)
             if extraction.provenance is None or extraction.provenance.source is None:
                 raise MissingProvenanceError(

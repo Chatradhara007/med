@@ -2,25 +2,40 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: CareThread - Patient-side record for one episode of care (24-hour AWS Hackathon)
 
+# Every function packages the repository root so that `carethread.*` imports
+# resolve inside the Lambda. Handlers are therefore fully-qualified module
+# paths, not bare `app.handler`.
 Globals:
   Function:
     Runtime: python3.11
     Timeout: 60
     MemorySize: 1024
+    CodeUri: ../../
     Environment:
       Variables:
         TABLE_NAME: !Ref RecordTable
         DOC_BUCKET: !Ref DocBucket
-        AWS_ACCOUNT_ID: !Ref "AWS::AccountId"
+        CORS_ALLOW_ORIGIN: !Ref WebOrigin
+        POWERTOOLS_LOG_LEVEL: INFO
 
 Parameters:
   BedrockModelId:
     Type: String
     Default: anthropic.claude-3-5-sonnet-20240620-v1:0
-    Description: Bedrock Model ID for clinical extraction
+    Description: >-
+      Bedrock model ID (or inference-profile ID) used for classification and
+      clinical extraction. Point this at the newest multimodal Claude model
+      enabled in your account.
+  WebOrigin:
+    Type: String
+    Default: "*"
+    Description: >-
+      Browser origin allowed to call the API. Set this to the Amplify domain
+      before submission; the wildcard default is for local development only.
   DemoMode:
     Type: String
     Default: "false"
+    AllowedValues: ["true", "false"]
     Description: Enable 30-second reminder schedule compression for demonstrations
   DemoReminderDelaySeconds:
     Type: Number
@@ -34,6 +49,8 @@ Resources:
     Properties:
       TableName: carethread
       BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       AttributeDefinitions:
         - AttributeName: PK
           AttributeType: S
@@ -47,6 +64,7 @@ Resources:
         - AttributeName: SK
           KeyType: RANGE
       GlobalSecondaryIndexes:
+        # "all documents currently processing", for the UI spinner.
         - IndexName: GSI1
           KeySchema:
             - AttributeName: status
@@ -76,7 +94,7 @@ Resources:
       CorsConfiguration:
         CorsRules:
           - AllowedMethods: [PUT, GET, POST, HEAD]
-            AllowedOrigins: ['*']
+            AllowedOrigins: [!Ref WebOrigin]
             AllowedHeaders: ['*']
             MaxAge: 3600
 
@@ -112,8 +130,8 @@ Resources:
     Properties:
       CorsConfiguration:
         AllowMethods: [GET, POST, PATCH, OPTIONS]
-        AllowHeaders: [Authorization, Content-Type, x-patient-id]
-        AllowOrigins: ['*']
+        AllowHeaders: [Authorization, Content-Type]
+        AllowOrigins: [!Ref WebOrigin]
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
@@ -130,16 +148,14 @@ Resources:
       TopicName: carethread-reminders-topic
       DisplayName: CareThread Care Plan Reminders
 
-  # 6. Reminder Lambda Handler (EventBridge -> SNS)
+  # 6. Reminder Lambda Handler (EventBridge Scheduler -> SNS)
   ReminderFn:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../modules/reminders/
-      Handler: handler.lambda_handler
+      Handler: carethread.modules.reminders.handler.lambda_handler
       Timeout: 30
       Environment:
         Variables:
-          TABLE_NAME: !Ref RecordTable
           SNS_TOPIC_ARN: !Ref ReminderTopic
           DEMO_MODE: !Ref DemoMode
           DEMO_REMINDER_DELAY_SECONDS: !Ref DemoReminderDelaySeconds
@@ -147,12 +163,38 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
         - SNSPublishMessagePolicy: { TopicName: !GetAtt ReminderTopic.TopicName }
 
+  # EventBridge Scheduler needs a role it can assume to invoke ReminderFn.
+  SchedulerInvokeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: scheduler.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: InvokeReminderFunction
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt ReminderFn.Arn
+
+  ReminderScheduleGroup:
+    Type: AWS::Scheduler::ScheduleGroup
+    Properties:
+      Name: carethread-reminders
+
   # 7. API Handlers
   DocumentsApiFn:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../api/documents/
-      Handler: app.handler
+      Handler: carethread.api.documents.app.handler
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
         - S3CrudPolicy: { BucketName: !Ref DocBucket }
@@ -173,8 +215,7 @@ Resources:
   RecordApiFn:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../api/record/
-      Handler: app.handler
+      Handler: carethread.api.record.app.handler
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
       Events:
@@ -206,10 +247,21 @@ Resources:
   SubstitutionApiFn:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../api/substitution/
-      Handler: app.handler
+      Handler: carethread.api.substitution.app.handler
+      Timeout: 90
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
       Policies:
+        # Read-only on the record: substitution never writes a prescription.
         - DynamoDBReadPolicy: { TableName: !Ref RecordTable }
+        - S3ReadPolicy: { BucketName: !Ref DocBucket }
+        - Statement:
+            - Effect: Allow
+              Action: [bedrock:InvokeModel]
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:bedrock:*::foundation-model/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*'
       Events:
         CheckSub:
           Type: HttpApi
@@ -218,12 +270,52 @@ Resources:
             Path: /substitution
             Method: POST
 
-  # 8. Step Functions Pipeline Lambdas
+  # Workflow endpoints (POST /plan/generate, POST /labs/interpret) were part of
+  # the API contract but had no deployed function.
+  WorkflowsApiFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: carethread.api.workflows.app.handler
+      Timeout: 120
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          REMINDER_LAMBDA_ARN: !GetAtt ReminderFn.Arn
+          EVENTBRIDGE_SCHEDULER_ROLE_ARN: !GetAtt SchedulerInvokeRole.Arn
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
+        - Statement:
+            - Effect: Allow
+              Action: [bedrock:InvokeModel]
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:bedrock:*::foundation-model/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*'
+        - Statement:
+            - Effect: Allow
+              Action: [scheduler:CreateSchedule, scheduler:DeleteSchedule, scheduler:GetSchedule]
+              Resource: !Sub 'arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/carethread-reminders/*'
+            - Effect: Allow
+              Action: iam:PassRole
+              Resource: !GetAtt SchedulerInvokeRole.Arn
+      Events:
+        GeneratePlan:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /plan/generate
+            Method: POST
+        InterpretLabs:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /labs/interpret
+            Method: POST
+
+  # 8. M1 Ingest Pipeline Lambdas
   RasteriseFn:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../pipeline/rasterise/
-      Handler: app.handler
+      Handler: carethread.pipeline.rasterise.app.handler
       Timeout: 120
       MemorySize: 2048
       Policies:
@@ -233,8 +325,7 @@ Resources:
   ClassifyFn:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../pipeline/classify/
-      Handler: app.handler
+      Handler: carethread.pipeline.classify.app.handler
       Timeout: 60
       Environment:
         Variables:
@@ -244,18 +335,15 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
         - Statement:
             - Effect: Allow
-              Action:
-                - bedrock:InvokeModel
+              Action: [bedrock:InvokeModel]
               Resource:
-                - !Sub 'arn:aws:bedrock:*::foundation-model/*'
-                - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*'
-                - !Sub 'arn:aws:bedrock:*::inference-profile/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock:*::foundation-model/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*'
 
   ExtractFn:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../pipeline/extract/
-      Handler: app.handler
+      Handler: carethread.pipeline.extract.app.handler
       Timeout: 180
       MemorySize: 2048
       Environment:
@@ -266,12 +354,37 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
         - Statement:
             - Effect: Allow
-              Action:
-                - bedrock:InvokeModel
+              Action: [bedrock:InvokeModel]
               Resource:
-                - !Sub 'arn:aws:bedrock:*::foundation-model/*'
-                - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*'
-                - !Sub 'arn:aws:bedrock:*::inference-profile/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock:*::foundation-model/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*'
+
+  ValidateFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: carethread.pipeline.validate.app.handler
+      Timeout: 180
+      MemorySize: 2048
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+      Policies:
+        - S3ReadPolicy: { BucketName: !Ref DocBucket }
+        - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
+        - Statement:
+            - Effect: Allow
+              Action: [bedrock:InvokeModel]
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:bedrock:*::foundation-model/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*'
+
+  ConfidenceFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: carethread.pipeline.confidence.app.handler
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
 
   # 9. Step Functions Ingest State Machine
   IngestPipelineStateMachine:
@@ -282,10 +395,14 @@ Resources:
         RasteriseFnArn: !GetAtt RasteriseFn.Arn
         ClassifyFnArn: !GetAtt ClassifyFn.Arn
         ExtractFnArn: !GetAtt ExtractFn.Arn
+        ValidateFnArn: !GetAtt ValidateFn.Arn
+        ConfidenceFnArn: !GetAtt ConfidenceFn.Arn
       Policies:
         - LambdaInvokePolicy: { FunctionName: !Ref RasteriseFn }
         - LambdaInvokePolicy: { FunctionName: !Ref ClassifyFn }
         - LambdaInvokePolicy: { FunctionName: !Ref ExtractFn }
+        - LambdaInvokePolicy: { FunctionName: !Ref ValidateFn }
+        - LambdaInvokePolicy: { FunctionName: !Ref ConfidenceFn }
       Events:
         RawDocumentUpload:
           Type: EventBridgeRule
@@ -324,6 +441,9 @@ Outputs:
   ReminderTopicArn:
     Description: CareThread Reminder SNS Topic ARN
     Value: !Ref ReminderTopic
+  SchedulerRoleArn:
+    Description: Role assumed by EventBridge Scheduler to invoke the reminder function
+    Value: !GetAtt SchedulerInvokeRole.Arn
   StateMachineArn:
     Description: Ingest Pipeline State Machine ARN
     Value: !Ref IngestPipelineStateMachine

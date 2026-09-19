@@ -18,11 +18,13 @@ from carethread.modules.reminders.schemas import (
 )
 from carethread.modules.reminders.repository import ReminderRepository
 from carethread.modules.reminders.scheduler import (
+    get_reminder_scheduler,
     ReminderSchedulerInterface,
     MockReminderScheduler,
     compute_scheduled_time,
 )
 from carethread.modules.reminders.publisher import (
+    get_notification_publisher,
     NotificationPublisherInterface,
     MockNotificationPublisher,
 )
@@ -43,8 +45,8 @@ class ReminderService:
     ) -> None:
         self.patient_repo = patient_repo
         self.reminder_repo = reminder_repo or ReminderRepository(repository=patient_repo)
-        self.scheduler = scheduler or MockReminderScheduler()
-        self.publisher = publisher or MockNotificationPublisher()
+        self.scheduler = scheduler or get_reminder_scheduler()
+        self.publisher = publisher or get_notification_publisher()
         self.handler = ReminderHandler(
             patient_repo=self.patient_repo,
             reminder_repo=self.reminder_repo,

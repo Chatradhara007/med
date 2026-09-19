@@ -19,6 +19,7 @@ from carethread.shared.repository.interfaces import PatientRepositoryInterface
 from carethread.shared.repository.exceptions import MissingProvenanceError, PatientNotFoundError
 
 from .rules import load_rules, evaluate_escalation_rules as eval_rules
+from .bedrock_formatter import get_care_plan_formatter
 from .formatter import LLMFormatterInterface, MockLLMFormatter
 from .schemas import CarePlanResult, SymptomReport
 
@@ -70,7 +71,7 @@ class CarePlanService:
         rules_path: Optional[str] = None
     ):
         self.repo = repository
-        self.formatter = formatter or MockLLMFormatter()
+        self.formatter = formatter or get_care_plan_formatter()
         self.rules_path = rules_path
         self._static_rules = load_rules(rules_path)
 

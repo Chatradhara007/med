@@ -1,0 +1,242 @@
+{
+  "Comment": "CareThread M1 ingest pipeline. One execution per uploaded document (Section 6).",
+  "StartAt": "Rasterise",
+  "States": {
+    "Rasterise": {
+      "Type": "Task",
+      "Comment": "PDF/image -> page PNGs into S3",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${RasteriseFnArn}",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed", "Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "Classify"
+    },
+
+    "Classify": {
+      "Type": "Task",
+      "Comment": "Vision model -> discharge_summary | lab_report | prescription | medicine_strip | unknown",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ClassifyFnArn}",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed", "Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "RouteByType"
+    },
+
+    "RouteByType": {
+      "Type": "Choice",
+      "Comment": "Branch to the matching extractor. unknown is a first-class outcome.",
+      "Choices": [
+        {
+          "Variable": "$.document_type",
+          "StringEquals": "unknown",
+          "Next": "MarkUnsupported"
+        }
+      ],
+      "Default": "ExtractX"
+    },
+
+    "MarkUnsupported": {
+      "Type": "Succeed",
+      "Comment": "Classify already set DOC# status to unsupported with a patient-facing message."
+    },
+
+    "ExtractX": {
+      "Type": "Task",
+      "Comment": "Type-specific structured extraction with verbatim source citations",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ExtractFnArn}",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed", "Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 3,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "ValidateSchema"
+    },
+
+    "ValidateSchema": {
+      "Type": "Task",
+      "Comment": "JSON-schema validate; reject and re-prompt once with the error appended",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ValidateFnArn}",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed", "Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 3,
+          "MaxAttempts": 1,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "GateConfidence"
+    },
+
+    "GateConfidence": {
+      "Type": "Task",
+      "Comment": "Split fields into confirmed / needs_review at the 0.85 threshold",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ConfidenceFnArn}",
+        "Payload": {
+          "stage": "gate",
+          "patient_id.$": "$.patient_id",
+          "doc_id.$": "$.doc_id",
+          "bucket.$": "$.bucket",
+          "document_type.$": "$.document_type",
+          "extraction.$": "$.extraction"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "PersistEntities"
+    },
+
+    "PersistEntities": {
+      "Type": "Task",
+      "Comment": "Batch-write MED#/LAB#/DIAG# rows into PATIENT#<id>",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ConfidenceFnArn}",
+        "Payload": {
+          "stage": "persist",
+          "patient_id.$": "$.patient_id",
+          "doc_id.$": "$.doc_id",
+          "bucket.$": "$.bucket",
+          "document_type.$": "$.document_type",
+          "gated.$": "$.gated",
+          "needs_review_count.$": "$.needs_review_count"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed", "Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "MarkReady"
+    },
+
+    "MarkReady": {
+      "Type": "Task",
+      "Comment": "DOC# status -> ready, or review_required while amber chips remain",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ConfidenceFnArn}",
+        "Payload": {
+          "stage": "mark_ready",
+          "patient_id.$": "$.patient_id",
+          "doc_id.$": "$.doc_id",
+          "bucket.$": "$.bucket",
+          "document_type.$": "$.document_type",
+          "needs_review_count.$": "$.needs_review_count"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "End": true
+    },
+
+    "HandleFailure": {
+      "Type": "Task",
+      "Comment": "DOC# status -> failed, with the reason surfaced in the UI",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ConfidenceFnArn}",
+        "Payload": {
+          "stage": "fail",
+          "patient_id.$": "$.patient_id",
+          "doc_id.$": "$.doc_id",
+          "bucket.$": "$.bucket",
+          "error.$": "$.error"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Next": "IngestFailed"
+    },
+
+    "IngestFailed": {
+      "Type": "Fail",
+      "Error": "IngestPipelineFailed",
+      "Cause": "Document ingestion failed; DOC# status is failed with a patient-facing reason."
+    }
+  }
+}

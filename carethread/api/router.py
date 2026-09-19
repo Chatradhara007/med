@@ -122,7 +122,36 @@ class ApiRouter:
             lab_service = LabInterpreterService(repository=self.repo) if self.repo else None
             return handle_interpret_labs(event, service=lab_service)
 
+        # A known path reached with the wrong verb is 405, not 404 -- the
+        # resource exists, the method does not.
+        allowed = self._allowed_methods(path)
+        if allowed:
+            return error_response(
+                405,
+                "METHOD_NOT_ALLOWED",
+                f"Method {http_method} is not allowed on {path}",
+                headers={"Allow": ",".join(sorted(allowed | {"OPTIONS"}))},
+            )
+
         return error_response(404, "NOT_FOUND", f"Cannot {http_method} {path}")
+
+    @staticmethod
+    def _allowed_methods(path: str) -> set:
+        """Methods this API exposes on the given path, if any."""
+        routes = [
+            (r"^/documents$", {"POST"}),
+            (r"^/documents/[^/]+$", {"GET"}),
+            (r"^/record$", {"GET", "PATCH"}),
+            (r"^/record/[^/]+$", {"PATCH"}),
+            (r"^/plan/generate$", {"POST"}),
+            (r"^/plan/[^/]+/[^/]+/done$", {"POST"}),
+            (r"^/substitution$", {"POST"}),
+            (r"^/labs/interpret$", {"POST"}),
+        ]
+        for pattern, methods in routes:
+            if re.match(pattern, path):
+                return methods
+        return set()
 
 
 def handler(event: Dict[str, Any], context: Any = None) -> Dict[str, Any]:

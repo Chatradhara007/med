@@ -6,7 +6,7 @@ provenance validation invariants.
 """
 
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from carethread.shared.schemas.patient import Patient
 from carethread.shared.schemas.document import Document
@@ -16,6 +16,7 @@ from carethread.shared.schemas.diagnosis import Diagnosis
 from carethread.shared.schemas.plan_entry import PlanEntry
 from carethread.shared.schemas.alert_rule import FiredAlert
 from carethread.shared.schemas.api import PatientRecordResponse
+from carethread.shared.schemas.provenance import ProvenanceStatus
 
 from .interfaces import PatientRepositoryInterface
 from .exceptions import (
@@ -97,6 +98,47 @@ class InMemoryPatientRepository(PatientRepositoryInterface):
             if item_pk == pk and item_sk.startswith("DOC#"):
                 docs.append(Document.model_validate(data))
         return sorted(docs, key=lambda d: d.created_at)
+
+    def update_document(self, document: Document) -> Document:
+        self._validate_patient_id(document.patient_id)
+        pk = document.pk
+        existing_sk = None
+        for (item_pk, item_sk), data in self._table.items():
+            if item_pk == pk and item_sk.startswith("DOC#") and data.get("doc_id") == document.doc_id:
+                existing_sk = item_sk
+                break
+        if existing_sk is None:
+            raise DocumentNotFoundError(
+                f"Document {document.doc_id} not found for patient {document.patient_id}"
+            )
+        # The sort key embeds created_at, so it must not move on a status change.
+        self._table[(pk, existing_sk)] = document.model_dump()
+        return document
+
+    def update_entity_field(
+        self,
+        patient_id: str,
+        sk: str,
+        field: str,
+        value: Any,
+        confirm_provenance: bool = True,
+    ) -> Dict[str, Any]:
+        self._validate_patient_id(patient_id)
+        pk = f"PATIENT#{patient_id}"
+        item = self._table.get((pk, sk))
+        if item is None:
+            raise EntityNotFoundError(
+                f"Record entity with SK '{sk}' not found for patient '{patient_id}'"
+            )
+        updated = dict(item)
+        updated[field] = value
+        updated["updated_at"] = datetime.now(timezone.utc).isoformat()
+        if confirm_provenance and isinstance(updated.get("provenance"), dict):
+            provenance = dict(updated["provenance"])
+            provenance["status"] = ProvenanceStatus.CONFIRMED.value
+            updated["provenance"] = provenance
+        self._table[(pk, sk)] = updated
+        return updated
 
     def create_medication(self, patient_id: str, medication: Medication) -> Medication:
         self._validate_patient_id(patient_id)

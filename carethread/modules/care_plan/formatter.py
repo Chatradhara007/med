@@ -26,7 +26,7 @@ def verify_medication_action_safety(medication: Medication, formatted_action: st
     # 1. Drug name or salt must be present
     name_clean = medication.name.lower().split()[0]
     salt_clean = medication.salt.lower().split()[0] if medication.salt else ""
-    if name_clean not in action_lower and (salt_clean and salt_clean not in action_lower):
+    if name_clean not in action_lower and not (salt_clean and salt_clean in action_lower):
         raise ClinicalSafetyViolation(
             f"Safety Violation: Formatted action '{formatted_action}' dropped canonical drug name '{medication.name}'"
         )

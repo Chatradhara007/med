@@ -5,9 +5,12 @@ The authenticated user's patient identity comes strictly from the JWT sub claim.
 Request body patient_id is NEVER trusted or used to override authenticated context.
 """
 
+import logging
 import os
 from typing import Any, Dict, Optional
 from .interfaces import UnauthorizedError
+
+logger = logging.getLogger(__name__)
 
 
 def extract_patient_id(
@@ -23,6 +26,14 @@ def extract_patient_id(
     """
     if allow_mock is None:
         allow_mock = os.environ.get("ALLOW_MOCK_AUTH", "false").lower() in ("true", "1", "yes")
+        # A header-supplied identity is an authentication bypass. It is only
+        # ever acceptable outside AWS; inside a deployed function the JWT
+        # authorizer is the single source of identity, whatever the env says.
+        if allow_mock and os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+            logger.error(
+                "ALLOW_MOCK_AUTH is set inside a deployed Lambda and is being ignored"
+            )
+            allow_mock = False
 
     request_context = event.get("requestContext", {})
     authorizer = request_context.get("authorizer", {})
@@ -39,9 +50,10 @@ def extract_patient_id(
     if patient_id and str(patient_id).strip():
         return str(patient_id).strip()
 
-    # Direct sub on authorizer
-    if "sub" in authorizer and str(authorizer["sub"]).strip():
-        return str(authorizer["sub"]).strip()
+    # Direct sub on authorizer (scalar only; a nested map is not an identity)
+    direct_sub = authorizer.get("sub")
+    if isinstance(direct_sub, (str, int)) and str(direct_sub).strip():
+        return str(direct_sub).strip()
 
     # 3. Local/testing mock adapter
     if allow_mock:

@@ -33,8 +33,10 @@ def handle_generate_plan(
     except PatientNotFoundError as e:
         return error_response(404, "PATIENT_NOT_FOUND", str(e))
     except Exception as e:
-        logger.error("Failed to generate care plan for patient %s: %s", patient_id, e)
-        return error_response(500, "PLAN_GENERATION_FAILED", f"Failed to generate care plan: {str(e)}")
+        logger.exception("Failed to generate care plan for patient %s", patient_id)
+        return error_response(
+            500, "PLAN_GENERATION_FAILED", "Failed to generate care plan"
+        )
 
 
 def handle_interpret_labs(
@@ -63,5 +65,28 @@ def handle_interpret_labs(
         )
         return make_response(200, report.model_dump())
     except Exception as e:
-        logger.error("Failed to interpret labs for patient %s: %s", patient_id, e)
-        return error_response(500, "LAB_INTERPRETATION_FAILED", f"Failed to interpret labs: {str(e)}")
+        logger.exception("Failed to interpret labs for patient %s", patient_id)
+        return error_response(
+            500, "LAB_INTERPRETATION_FAILED", "Failed to interpret labs"
+        )
+
+
+def handler(event: Dict[str, Any], context: Any = None) -> Dict[str, Any]:
+    """Lambda entrypoint for the workflow endpoints."""
+    path = (
+        event.get("rawPath")
+        or event.get("path")
+        or event.get("requestContext", {}).get("http", {}).get("path", "")
+    )
+    method = (
+        event.get("httpMethod")
+        or event.get("requestContext", {}).get("http", {}).get("method", "POST")
+    ).upper()
+
+    if method == "OPTIONS":
+        return make_response(200, {"status": "ok"})
+    if path.endswith("/plan/generate") and method == "POST":
+        return handle_generate_plan(event)
+    if path.endswith("/labs/interpret") and method == "POST":
+        return handle_interpret_labs(event)
+    return error_response(404, "NOT_FOUND", f"Cannot {method} {path}")

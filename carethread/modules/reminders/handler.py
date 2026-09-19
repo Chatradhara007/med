@@ -20,12 +20,17 @@ from carethread.modules.reminders.schemas import (
 )
 from carethread.modules.reminders.repository import ReminderRepository
 from carethread.modules.reminders.publisher import (
+    get_notification_publisher,
     NotificationPublisherInterface,
     MockNotificationPublisher,
     SNSNotificationPublisher,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ReminderConfigurationError(RuntimeError):
+    """Raised when the reminder Lambda is deployed without a delivery target."""
 
 
 def build_safe_notification_message(slot_name: str) -> str:
@@ -45,10 +50,32 @@ class ReminderHandler:
         patient_repo: PatientRepositoryInterface,
         reminder_repo: Optional[ReminderRepository] = None,
         publisher: Optional[NotificationPublisherInterface] = None,
+        topic_arn: Optional[str] = None,
     ) -> None:
         self.patient_repo = patient_repo
         self.reminder_repo = reminder_repo or ReminderRepository(repository=patient_repo)
-        self.publisher = publisher or MockNotificationPublisher()
+        self.publisher = publisher or get_notification_publisher()
+        self.topic_arn = topic_arn or os.getenv("SNS_TOPIC_ARN") or os.getenv(
+            "REMINDER_SNS_TOPIC_ARN"
+        )
+
+    def _resolve_destination(self, context: Any) -> str:
+        """Pick the delivery target for this patient.
+
+        The configured SNS topic is the delivery channel; the patient's own
+        phone number is used only when no topic is configured (direct SMS).
+        Neither is ever fabricated -- an unconfigured deployment fails loudly
+        rather than publishing into a topic ARN that does not exist.
+        """
+        if self.topic_arn:
+            return self.topic_arn
+        phone = getattr(getattr(context, "patient", None), "phone", None)
+        if phone:
+            return str(phone)
+        raise ReminderConfigurationError(
+            "No reminder destination configured: set SNS_TOPIC_ARN, or give the "
+            "patient profile a phone number for direct SMS delivery"
+        )
 
     def evaluate_and_dispatch(
         self,
@@ -141,7 +168,7 @@ class ReminderHandler:
         # 6. Compose safe privacy-preserving notification message
         message_body = build_safe_notification_message(event.slot.value)
         subject = f"CareThread: {event.slot.value.capitalize()} Care Plan Reminder"
-        destination = f"arn:aws:sns:us-east-1:123456789012:patient-{patient_id}"
+        destination = self._resolve_destination(context)
 
         # 7. Deliver notification via configured publisher
         publish_result = self.publisher.publish(
@@ -189,21 +216,40 @@ def lambda_handler(event: Dict[str, Any], context: Any = None) -> Dict[str, Any]
         except Exception:
             pass
 
-    # In production AWS Lambda, construct repository using DynamoDB table
-    table_name = os.getenv("TABLE_NAME", "carethread-records")
-    use_real_aws = os.getenv("USE_REAL_AWS", "false").lower() == "true"
+    # Real AWS is the default. Mocks are opt-in for local runs only, and are
+    # refused outright inside a deployed function -- a reminder Lambda that
+    # silently reads an empty in-memory table and publishes nowhere looks
+    # healthy in CloudWatch while delivering no reminders at all.
+    in_lambda = bool(os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+    use_mocks = (
+        not in_lambda
+        and os.getenv("USE_MOCK_AWS", "false").lower() in ("true", "1", "yes")
+    )
 
-    if use_real_aws:
-        from carethread.shared.repository.dynamodb import DynamoDBPatientRepository
-        repo = DynamoDBPatientRepository(table_name=table_name)
-        publisher = SNSNotificationPublisher()
-    else:
+    if use_mocks:
+        logger.warning("USE_MOCK_AWS is set; reminders run against in-memory mocks")
         from carethread.shared.repository.in_memory import InMemoryPatientRepository
-        repo = InMemoryPatientRepository()
-        publisher = MockNotificationPublisher()
+
+        repo: PatientRepositoryInterface = InMemoryPatientRepository()
+        publisher: NotificationPublisherInterface = MockNotificationPublisher()
+    else:
+        from carethread.shared.repository.dynamodb import DynamoDBPatientRepository
+
+        repo = DynamoDBPatientRepository(table_name=os.getenv("TABLE_NAME"))
+        publisher = SNSNotificationPublisher()
 
     handler = ReminderHandler(patient_repo=repo, publisher=publisher)
-    result = handler.evaluate_and_dispatch(payload)
+
+    try:
+        result = handler.evaluate_and_dispatch(payload)
+    except ReminderConfigurationError as exc:
+        logger.error("Reminder dispatch misconfigured: %s", exc)
+        return {
+            "statusCode": 500,
+            "body": json.dumps(
+                {"status": ReminderStatus.FAILED.value, "error": str(exc)}
+            ),
+        }
 
     return {
         "statusCode": result.status_code,

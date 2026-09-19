@@ -5,7 +5,7 @@ ONE PATIENT -> ONE PARTITION KEY -> ALL RELATED CONTEXT.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from carethread.shared.schemas.patient import Patient
 from carethread.shared.schemas.document import Document
@@ -48,6 +48,28 @@ class PatientRepositoryInterface(ABC):
     @abstractmethod
     def list_documents(self, patient_id: str) -> List[Document]:
         """Retrieve all documents belonging to a patient."""
+        pass
+
+    @abstractmethod
+    def update_document(self, document: Document) -> Document:
+        """Persist a document lifecycle transition (status, type, pages, error_reason)."""
+        pass
+
+    @abstractmethod
+    def update_entity_field(
+        self,
+        patient_id: str,
+        sk: str,
+        field: str,
+        value: Any,
+        confirm_provenance: bool = True,
+    ) -> Dict[str, Any]:
+        """Apply a single allowlisted field update to one entity in the partition.
+
+        Callers are responsible for allowlist enforcement; this method performs
+        the targeted, non-destructive write and returns the updated raw item.
+        Resolving a needs_review chip transitions provenance to confirmed.
+        """
         pass
 
     @abstractmethod

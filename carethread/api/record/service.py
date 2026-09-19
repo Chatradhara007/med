@@ -99,41 +99,25 @@ class RecordService:
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{field} must be a non-empty string")
 
-        # 3. Retrieve raw item from repository
-        pk = f"PATIENT#{patient_id}"
-        item: Optional[Dict[str, Any]] = None
-
-        if hasattr(self.repo, "_table") and isinstance(self.repo._table, dict):
-            # InMemory repo
-            raw = self.repo._table.get((pk, sk))
-            if raw:
-                item = dict(raw)
-        elif hasattr(self.repo, "_table") and hasattr(self.repo._table, "get_item"):
-            # DynamoDB Table resource
-            res = self.repo._table.get_item(Key={"PK": pk, "SK": sk})
-            item = res.get("Item")
-
-        if item is None:
-            raise EntityNotFoundError(f"Record entity with SK '{sk}' not found for patient '{patient_id}'")
-
-        # 4. Safe non-destructive update
-        item[field] = value
-        item["updated_at"] = datetime.now(timezone.utc).isoformat()
-
-        # If item has provenance, transition status from needs_review to confirmed
-        status = ProvenanceStatus.CONFIRMED
-        if "provenance" in item and isinstance(item["provenance"], dict):
-            item["provenance"]["status"] = ProvenanceStatus.CONFIRMED.value
-
-        # 5. Persist updated item back
-        if hasattr(self.repo, "_table") and isinstance(self.repo._table, dict):
-            self.repo._table[(pk, sk)] = item
-        elif hasattr(self.repo, "_table") and hasattr(self.repo._table, "put_item"):
-            item["PK"] = pk
-            item["SK"] = sk
-            self.repo._table.put_item(Item=item)
+        # 3. Targeted, non-destructive write through the repository contract.
+        #    Resolving a needs_review chip transitions provenance to confirmed
+        #    (Section 9.2); the source citation itself is never touched.
+        item = self.repo.update_entity_field(
+            patient_id=patient_id,
+            sk=sk,
+            field=field,
+            value=value,
+            confirm_provenance=True,
+        )
 
         logger.info("Successfully updated %s.%s for patient %s", sk, field, patient_id)
+
+        provenance = item.get("provenance")
+        status = (
+            ProvenanceStatus(provenance["status"])
+            if isinstance(provenance, dict) and provenance.get("status")
+            else ProvenanceStatus.CONFIRMED
+        )
         return RecordFieldPatchResponse(
             status=status,
             updated_item=item,

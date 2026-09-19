@@ -53,8 +53,9 @@ def compute_scheduled_time(
         second=0,
         tzinfo=timezone.utc,
     )
-    # If the computed time is in the past for day 0, schedule at next available slot or immediate
-    if target_dt <= now and day_index == 0:
+    # A slot whose hour has already passed (day 0 at 18:00, or a plan generated
+    # late) must still fire rather than being scheduled into the past.
+    if target_dt <= now:
         return now + timedelta(minutes=15)
     return target_dt
 
@@ -116,9 +117,25 @@ class EventBridgeReminderScheduler(ReminderSchedulerInterface):
         schedule_group: str = "carethread-reminders",
     ) -> None:
         self._client = boto_client
-        self.target_arn = target_arn or os.getenv("REMINDER_LAMBDA_ARN", "arn:aws:lambda:us-east-1:123456789012:function:CareThreadReminderFn")
-        self.role_arn = role_arn or os.getenv("EVENTBRIDGE_SCHEDULER_ROLE_ARN", "arn:aws:iam::123456789012:role/EventBridgeSchedulerRole")
+        # No placeholder ARNs: a schedule created against a fabricated account
+        # would be accepted by the API and then never fire, which is worse than
+        # failing at construction time.
+        self.target_arn = target_arn or os.getenv("REMINDER_LAMBDA_ARN")
+        self.role_arn = role_arn or os.getenv("EVENTBRIDGE_SCHEDULER_ROLE_ARN")
         self.schedule_group = schedule_group
+        missing = [
+            name
+            for name, value in (
+                ("REMINDER_LAMBDA_ARN", self.target_arn),
+                ("EVENTBRIDGE_SCHEDULER_ROLE_ARN", self.role_arn),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                "EventBridgeReminderScheduler is not configured; missing "
+                + ", ".join(missing)
+            )
 
     @property
     def client(self) -> Any:
@@ -174,3 +191,21 @@ class EventBridgeReminderScheduler(ReminderSchedulerInterface):
         # EventBridge Scheduler list_schedules returns metadata; payload needs fetching
         # For listing in production, queries are usually tracked via DynamoDB single table
         return []
+
+
+def get_reminder_scheduler() -> ReminderSchedulerInterface:
+    """Return the scheduler for the current environment.
+
+    Real EventBridge Scheduler by default. The mock is opt-in locally and is
+    never selected inside a deployed function, where a schedule that is only
+    recorded in memory would mean no reminder ever fires.
+    """
+    in_lambda = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+    if not in_lambda and os.environ.get("USE_MOCK_AWS", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    ):
+        logger.warning("USE_MOCK_AWS is set; reminder scheduling is mocked")
+        return MockReminderScheduler()
+    return EventBridgeReminderScheduler()

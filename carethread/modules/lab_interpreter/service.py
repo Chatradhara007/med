@@ -38,6 +38,9 @@ from carethread.modules.lab_interpreter.ranking import (
 from carethread.modules.lab_interpreter.context import (
     evaluate_lab_context,
 )
+from carethread.modules.lab_interpreter.bedrock_formatter import (
+    get_lab_explanation_formatter,
+)
 from carethread.modules.lab_interpreter.llm_adapter import (
     LabExplanationFormatterInterface,
     MockLabExplanationFormatter,
@@ -55,7 +58,7 @@ class LabInterpreterService:
     ) -> None:
         self.repository = repository
         self.fallback_repo = fallback_repo or get_default_fallback_repo()
-        self.formatter = formatter or MockLabExplanationFormatter()
+        self.formatter = formatter or get_lab_explanation_formatter()
 
     def interpret_labs(
         self,
