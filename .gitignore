@@ -47,3 +47,9 @@ temp/
 AGENTS.md
 PROJECT_SPEC.md
 carethread.zip
+
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.log

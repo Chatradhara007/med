@@ -1,0 +1,44 @@
+# CareThread Deterministic Clinical Escalation Rules
+# PRIMARY SOURCE OF TRUTH: Section 7, Module M2 of CareThread Build Documentation
+#
+# INVARIANT:
+# The model formats and translates. The rules decide.
+# Escalation criteria must NEVER be invented by an LLM.
+# All fired alerts reference static rule IDs defined in this file.
+
+rules:
+  - id: fever_persistent
+    when: "symptom.fever_f > 101 for 48h"
+    severity: high
+    message: "Return to the hospital or call your doctor."
+
+  - id: post_cardiac_chest_pain
+    applies_if_diagnosis:
+      - "myocardial infarction"
+      - "angina"
+      - "cabg"
+      - "coronary artery disease"
+      - "cad"
+    when: "symptom.chest_pain == true"
+    severity: critical
+    message: "Call emergency services now."
+
+  - id: hypoglycemia_acute
+    applies_if_diagnosis:
+      - "type 2 diabetes"
+      - "type 1 diabetes"
+      - "diabetes mellitus"
+      - "t2dm"
+    when: "symptom.blood_glucose < 70"
+    severity: high
+    message: "Consume 15g fast-acting sugar (fruit juice or glucose tablets) immediately and re-test in 15 minutes. Contact your care team if blood glucose remains below 70 mg/dL."
+
+  - id: severe_shortness_of_breath
+    when: "symptom.shortness_of_breath == true"
+    severity: critical
+    message: "Severe respiratory distress. Seek immediate emergency medical attention."
+
+  - id: hypertensive_crisis
+    when: "vitals.systolic_bp > 180"
+    severity: critical
+    message: "Systolic blood pressure exceeds 180 mmHg (Hypertensive Crisis). Seek emergency medical care immediately."

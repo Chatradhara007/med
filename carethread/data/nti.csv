@@ -1,0 +1,10 @@
+salt,brand_examples,clinical_rationale,substitution_policy
+warfarin,"Coumadin, Warf, Uniwarfin","Narrow therapeutic ratio. Small dose changes lead to life-threatening hemorrhage or thrombosis. INR monitoring strictly tied to formulation.",HARD_BLOCK_DO_NOT_SUBSTITUTE
+levothyroxine,"Eltroxin, Thyronorm, Synthroid","Bioequivalence variances between brands alter TSH levels significantly, risking iatrogenic hyperthyroidism or cardiac arrhythmias.",HARD_BLOCK_DO_NOT_SUBSTITUTE
+phenytoin,"Dilantin, Eptoin","Zero-order saturation pharmacokinetics. Minor bioavailability shifts result in severe toxicity (ataxia, nystagmus) or breakthrough seizures.",HARD_BLOCK_DO_NOT_SUBSTITUTE
+digoxin,"Lanoxin, Digoxin","Extremely narrow therapeutic window (0.8 - 2.0 ng/mL). Toxicity manifests as fatal ventricular arrhythmias and AV blocks.",HARD_BLOCK_DO_NOT_SUBSTITUTE
+lithium,"Lithosun, Licab","Narrow serum margin (0.6 - 1.2 mEq/L). Toxicity leads to nephrotoxicity, neurotoxicity, and tremors.",HARD_BLOCK_DO_NOT_SUBSTITUTE
+carbamazepine,"Tegretol, Mazetol","Auto-induction and non-linear kinetics. Brand switching risks breakthrough epileptic seizures or aplastic anemia.",HARD_BLOCK_DO_NOT_SUBSTITUTE
+theophylline,"Deriphyllin, Theo-Asthalin, Unicontin","Arrhythmogenic and seizure risk with small changes in systemic absorption.",HARD_BLOCK_DO_NOT_SUBSTITUTE
+ciclosporin,"Sandimmun, Panimun Bioral","Critical immunosuppressant. Bioavailability differences precipitate organ transplant rejection or acute nephrotoxicity.",HARD_BLOCK_DO_NOT_SUBSTITUTE
+tacrolimus,"Prograf, Pangraf, Tacrolin","Critical immunosuppressive agent. Uncontrolled substitution risks acute graft loss in solid organ transplant recipients.",HARD_BLOCK_DO_NOT_SUBSTITUTE
