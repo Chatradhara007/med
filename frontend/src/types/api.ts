@@ -21,7 +21,7 @@ export interface CarePlanItem {
   type: 'medication' | 'task';
 }
 
-export type BoundingBox = [number, number, number, number]; // [x, y, width, height] as percentages (0-100) or pixels. We'll use percentages for responsive mock.
+export type BoundingBox = [number, number, number, number];
 
 export interface SourceMetadata {
   doc_id: string;
@@ -34,11 +34,11 @@ export interface SourceMetadata {
 export type FieldStatus = 'extracted' | 'confirmed' | 'needs_review';
 
 export interface ExtractedField<T> {
-  sk: string; // Surrogate key / ID for the field
+  sk: string;
   category: 'diagnosis' | 'medication' | 'follow_up' | 'restriction' | 'discharge_instruction' | 'lab_result';
   value: T;
   source: SourceMetadata;
-  confidence: number; // 0.0 to 1.0
+  confidence: number;
   status: FieldStatus;
 }
 
@@ -72,7 +72,7 @@ export interface DocumentMetadata {
   status: 'uploaded' | 'processing' | 'ready' | 'failed';
   uploadedAt: string;
   errorReason?: string;
-  extractedData?: ExtractedField<Record<string, unknown>>[]; // Populated when ready
+  extractedData?: ExtractedField<Record<string, unknown>>[];
 }
 
 export interface CreateDocumentRequest {
@@ -96,4 +96,40 @@ export interface PatientRecord {
   alerts: Alert[];
   carePlan: CarePlanItem[];
   recentDocuments: DocumentMetadata[];
+}
+
+// Phase 5: Substitution Types
+export interface SubstitutionRequest {
+  doc_id?: string;
+  brand?: string;
+  strength?: string;
+}
+
+export interface AlternativeMedicine {
+  brand: string;
+  generic: string;
+  strength: string;
+  priceEstimate?: string;
+}
+
+export interface InteractionWarning {
+  severity: 'low' | 'medium' | 'high';
+  message: string;
+  activeMedication: string;
+  newMedication: string;
+}
+
+export interface SubstitutionResponse {
+  detected?: AlternativeMedicine;
+  blocked: boolean;
+  reason?: string;
+  alternatives: AlternativeMedicine[];
+  interactions: InteractionWarning[];
+}
+
+export interface PreviousScanEntry {
+  id: string;
+  date: string;
+  detectedName: string;
+  status: 'success' | 'blocked' | 'error';
 }

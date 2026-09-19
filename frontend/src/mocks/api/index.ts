@@ -1,4 +1,7 @@
-import type { PatientRecord, CarePlanItem, DocumentMetadata, CreateDocumentRequest, CreateDocumentResponse, ExtractedField, UpdateRecordFieldRequest } from '../../types/api';
+import type { 
+  PatientRecord, CarePlanItem, DocumentMetadata, CreateDocumentRequest, CreateDocumentResponse, 
+  ExtractedField, UpdateRecordFieldRequest, SubstitutionRequest, SubstitutionResponse, PreviousScanEntry 
+} from '../../types/api';
 
 const mockExtractedFields: ExtractedField<Record<string, unknown>>[] = [
   {
@@ -20,7 +23,7 @@ const mockExtractedFields: ExtractedField<Record<string, unknown>>[] = [
   {
     sk: 'ext_med_2',
     category: 'medication',
-    value: { name: 'Amoxicilln', strength: '250mg', frequency: 'TDS' },
+    value: { name: 'Amoxicillin', strength: '250mg', frequency: 'TDS' },
     source: { doc_id: 'd_001', page: 1, bbox: [12, 42, 40, 4], verbatim: 'Amoxil 250mg 3 times a day', doc_name: 'Discharge Summary.pdf' },
     confidence: 0.72,
     status: 'needs_review'
@@ -37,7 +40,7 @@ const mockExtractedFields: ExtractedField<Record<string, unknown>>[] = [
     sk: 'ext_lab_1',
     category: 'lab_result',
     value: { test: 'HbA1c', value: '7.2', unit: '%' },
-    source: { doc_id: 'd_001', verbatim: 'HbA1c was 7.2%', doc_name: 'Discharge Summary.pdf' }, // Missing bbox and page intentionally
+    source: { doc_id: 'd_001', verbatim: 'HbA1c was 7.2%', doc_name: 'Discharge Summary.pdf' },
     confidence: 0.99,
     status: 'confirmed'
   }
@@ -101,19 +104,12 @@ const mockRecord: PatientRecord = {
       description: 'Take one tablet with dinner',
       status: 'pending',
       type: 'medication'
-    },
-    {
-      id: 'cp_003',
-      day: '2023-10-02',
-      slot: 'morning',
-      title: 'Metformin 500mg',
-      description: 'Take one tablet with breakfast',
-      status: 'pending',
-      type: 'medication'
     }
   ],
   recentDocuments: []
 };
+
+let scenarioCounter = 0;
 
 export const mockApi = {
   getRecord: async (): Promise<PatientRecord> => {
@@ -141,12 +137,11 @@ export const mockApi = {
     return new Promise((resolve, reject) => {
       setTimeout(() => {
         let found = false;
-        // Search through extracted data in docs to update the mock state
         for (const doc of mockDocuments) {
           if (doc.extractedData) {
             const field = doc.extractedData.find(f => f.sk === req.sk);
             if (field) {
-              field.value = { ...(field.value as Record<string, unknown>), ...(req.value as Record<string, unknown>) };
+              field.value = { ...(field.value as Record<string, unknown>), ...req.value };
               field.status = 'confirmed';
               found = true;
             }
@@ -166,7 +161,7 @@ export const mockApi = {
     return new Promise((resolve, reject) => {
       setTimeout(() => {
         const doc = mockDocuments.find(d => d.id === id);
-        if (doc) resolve(JSON.parse(JSON.stringify(doc))); // Deep copy to prevent unintended mutations
+        if (doc) resolve(JSON.parse(JSON.stringify(doc)));
         else reject(new Error('Document not found'));
       }, 300);
     });
@@ -192,7 +187,7 @@ export const mockApi = {
           setTimeout(() => {
             if (docToUpdate) {
               docToUpdate.status = 'ready';
-              docToUpdate.extractedData = []; // Mock empty extraction for newly uploaded
+              docToUpdate.extractedData = []; 
             }
           }, 5000);
         }, 3000);
@@ -202,6 +197,62 @@ export const mockApi = {
           upload_url: 'mock://s3-upload-url'
         });
       }, 500);
+    });
+  },
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  submitSubstitution: async (_req: SubstitutionRequest): Promise<SubstitutionResponse> => {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        scenarioCounter = (scenarioCounter + 1) % 3;
+        
+        if (scenarioCounter === 1) { // Scenario A: Successful substitution
+          resolve({
+            detected: { brand: 'Tylenol', generic: 'Acetaminophen', strength: '500mg' },
+            blocked: false,
+            alternatives: [
+              { brand: 'Generic Paracetamol', generic: 'Acetaminophen', strength: '500mg', priceEstimate: '$' },
+              { brand: 'Panadol', generic: 'Acetaminophen', strength: '500mg', priceEstimate: '$$' }
+            ],
+            interactions: []
+          });
+        } else if (scenarioCounter === 2) { // Scenario B: Interaction warning
+          resolve({
+            detected: { brand: 'Advil', generic: 'Ibuprofen', strength: '400mg' },
+            blocked: false,
+            alternatives: [
+              { brand: 'Motrin', generic: 'Ibuprofen', strength: '400mg', priceEstimate: '$$' }
+            ],
+            interactions: [
+              {
+                severity: 'high',
+                message: 'May increase risk of bleeding or kidney issues when taken alongside current medications.',
+                activeMedication: 'Metformin 500mg',
+                newMedication: 'Ibuprofen 400mg'
+              }
+            ]
+          });
+        } else { // Scenario C: Blocked
+          resolve({
+            detected: { brand: 'Warfarin', generic: 'Warfarin Sodium', strength: '5mg' },
+            blocked: true,
+            reason: 'Substitution requires specialized clinical review for narrow therapeutic index drugs.',
+            alternatives: [],
+            interactions: []
+          });
+        }
+      }, 1500);
+    });
+  },
+
+  getPreviousScans: async (): Promise<PreviousScanEntry[]> => {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve([
+          { id: 's_001', date: new Date().toISOString(), detectedName: 'Tylenol 500mg', status: 'success' },
+          { id: 's_002', date: new Date(Date.now() - 86400000).toISOString(), detectedName: 'Warfarin 5mg', status: 'blocked' }
+        ]);
+      }, 400);
     });
   }
 };

@@ -1,23 +1,7 @@
-import { Link, Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 
-export const MedicineScanner = () => {
-  return (
-    <div className="feature-page">
-      <h2>Medicine Scanner</h2>
-      <p>Capture or select medicine-strip photo.</p>
-      <Link to="/medicine/result">Scan Mock Medicine</Link>
-    </div>
-  );
-};
-
-export const MedicineResult = () => {
-  return (
-    <div className="feature-page">
-      <h2>Substitution Result</h2>
-      <p>Alternatives and interactions will be here.</p>
-      <Link to="/medicine">Back to Scanner</Link>
-    </div>
-  );
-};
+export { MedicineScannerPage as MedicineScanner } from './pages/MedicineScannerPage';
+export { SubstitutionResultPage as MedicineResult } from './pages/SubstitutionResultPage';
+export { PreviousScansPage as PreviousScans } from './pages/PreviousScansPage';
 
 export const MedicineLayout = () => <Outlet />;

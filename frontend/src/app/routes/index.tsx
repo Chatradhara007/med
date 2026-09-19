@@ -2,7 +2,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { AppLayout } from '../../components/layout';
 import { Timeline } from '../../features/timeline';
 import { DocumentsLayout, DocumentsList, DocumentDetail } from '../../features/documents';
-import { MedicineLayout, MedicineScanner, MedicineResult } from '../../features/medicine';
+import { MedicineLayout, MedicineScanner, MedicineResult, PreviousScans } from '../../features/medicine';
 import { Profile } from '../../features/patient';
 import { Auth } from '../../features/auth';
 
@@ -26,6 +26,7 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <MedicineScanner /> },
           { path: 'result', element: <MedicineResult /> },
+          { path: 'history', element: <PreviousScans /> },
         ],
       },
       { path: 'profile', element: <Profile /> },
