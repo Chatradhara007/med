@@ -31,6 +31,16 @@ class StorageServiceInterface(ABC):
         pass
 
     @abstractmethod
+    def generate_download_url(self, s3_key: str, expires_in: int = 900) -> str:
+        """Generate a short-lived presigned GET URL for a stored object.
+
+        The bucket blocks all public access, so rasterised page images are only
+        reachable through a presigned URL. Callers must confirm the object
+        belongs to the authenticated patient before handing one out.
+        """
+        pass
+
+    @abstractmethod
     def get_s3_key(self, patient_id: str, doc_id: str, filename: str) -> str:
         """Deterministic S3 object key convention per Section 4.2.
 

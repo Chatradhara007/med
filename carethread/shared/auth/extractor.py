@@ -64,3 +64,20 @@ def extract_patient_id(
                 return str(v).strip()
 
     raise UnauthorizedError("Unauthorized: Missing or invalid authenticated patient identity in JWT claims")
+
+
+def extract_claims(event: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the verified JWT claims attached by the API Gateway authorizer.
+
+    Only claims the authorizer placed on the request context are returned; the
+    request body and headers are never consulted. Used to seed a patient
+    profile on first sign-in, never to make an authorization decision.
+    """
+    authorizer = (event.get("requestContext") or {}).get("authorizer") or {}
+    claims = (authorizer.get("jwt") or {}).get("claims")
+    if isinstance(claims, dict) and claims:
+        return dict(claims)
+    claims = authorizer.get("claims")
+    if isinstance(claims, dict) and claims:
+        return dict(claims)
+    return {}

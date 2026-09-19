@@ -1,7 +1,8 @@
 """Handlers for triggering domain workflows (Care Plan generation, Lab report interpretation)."""
 
 import logging
-from typing import Any, Dict, Optional
+import os
+from typing import Any, Dict, List, Optional
 
 from carethread.shared.auth import extract_patient_id, UnauthorizedError
 from carethread.shared.repository import get_repository
@@ -11,6 +12,42 @@ from carethread.modules.lab_interpreter.service import LabInterpreterService
 from carethread.api.common.response import make_response, error_response
 
 logger = logging.getLogger(__name__)
+
+
+def _demo_mode() -> bool:
+    return os.environ.get("DEMO_MODE", "false").lower() in ("true", "1", "yes")
+
+
+def _schedule_reminders(
+    patient_id: str,
+    plan_entries: List[Any],
+    repository: Any,
+) -> int:
+    """Register EventBridge schedules for a freshly generated care plan.
+
+    Best effort on purpose: a plan that was generated and persisted must still
+    be returned to the patient if the reminder channel is unconfigured. The
+    count comes back in the response so the caller can tell the difference
+    between "scheduled" and "silently did nothing".
+    """
+    if not plan_entries:
+        return 0
+
+    try:
+        from carethread.modules.reminders.service import ReminderService
+
+        service = ReminderService(patient_repo=repository)
+        records = service.schedule_plan_reminders(
+            patient_id=patient_id,
+            plan_entries=plan_entries,
+            demo_mode=_demo_mode(),
+            demo_delay_seconds=int(os.environ.get("DEMO_REMINDER_DELAY_SECONDS", "30")),
+        )
+        logger.info("Scheduled %d reminders for patient %s", len(records), patient_id)
+        return len(records)
+    except Exception:
+        logger.exception("Care plan for %s was saved but reminders were not scheduled", patient_id)
+        return 0
 
 
 def handle_generate_plan(
@@ -26,10 +63,16 @@ def handle_generate_plan(
     if service is None:
         repo = get_repository()
         service = CarePlanService(repository=repo)
+    else:
+        repo = getattr(service, "repository", None) or get_repository()
 
     try:
         result = service.generate_care_plan(patient_id=patient_id)
-        return make_response(200, result.model_dump())
+        payload = result.model_dump()
+        payload["reminders_scheduled"] = _schedule_reminders(
+            patient_id, result.entries, repo
+        )
+        return make_response(200, payload)
     except PatientNotFoundError as e:
         return error_response(404, "PATIENT_NOT_FOUND", str(e))
     except Exception as e:

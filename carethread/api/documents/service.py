@@ -1,8 +1,9 @@
 """Documents domain service coordinating storage and single-table metadata persistence."""
 
+import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from carethread.shared.schemas.document import Document, DocumentStatus, DocumentType
 from carethread.shared.schemas.api import (
@@ -13,6 +14,12 @@ from carethread.shared.schemas.api import (
 from carethread.shared.repository.interfaces import PatientRepositoryInterface
 from carethread.shared.repository.exceptions import DocumentNotFoundError
 from carethread.shared.storage.interfaces import StorageServiceInterface
+
+logger = logging.getLogger(__name__)
+
+# Long enough to read a document without a refresh, short enough that a leaked
+# URL expires quickly.
+PAGE_URL_TTL_SECONDS = 900
 
 
 class DocumentsService:
@@ -83,10 +90,26 @@ class DocumentsService:
             raise DocumentNotFoundError(f"Document {doc_id} not found for patient {patient_id}")
 
         pages_list = document.pages if isinstance(document.pages, list) else []
+
+        # The document was fetched patient-scoped, so every page key below is
+        # inside this patient's own prefix; a presigned URL cannot be minted
+        # for another partition's object.
+        page_urls: List[str] = []
+        for key in pages_list:
+            try:
+                page_urls.append(
+                    self.storage.generate_download_url(key, expires_in=PAGE_URL_TTL_SECONDS)
+                )
+            except Exception:
+                logger.warning("Could not presign page %s for document %s", key, doc_id)
+                page_urls = []
+                break
+
         return DocumentStatusResponse(
             doc_id=document.doc_id,
             status=document.status,
             type=document.type,
             pages=pages_list,
+            page_urls=page_urls,
             error=document.error_reason
         )

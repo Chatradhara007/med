@@ -32,6 +32,19 @@ class S3StorageService(StorageServiceInterface):
         ext = extract_extension(filename, content_type)
         return f"raw/{patient_id}/{doc_id}.{ext}"
 
+    def generate_download_url(self, s3_key: str, expires_in: int = 900) -> str:
+        """Presigned GET URL so the UI can render a page image it cannot fetch directly."""
+        if not s3_key or not s3_key.strip():
+            raise ValueError("s3_key must be a non-empty string")
+        try:
+            return self._s3.generate_presigned_url(
+                ClientMethod="get_object",
+                Params={"Bucket": self.bucket_name, "Key": s3_key},
+                ExpiresIn=expires_in,
+            )
+        except ClientError as e:
+            raise RuntimeError(f"Failed to generate S3 presigned download URL: {e}") from e
+
     def generate_upload_url(
         self,
         patient_id: str,

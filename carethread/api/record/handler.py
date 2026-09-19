@@ -12,7 +12,7 @@ import logging
 from typing import Any, Dict, Optional
 from pydantic import ValidationError
 
-from carethread.shared.auth import extract_patient_id, UnauthorizedError
+from carethread.shared.auth import extract_claims, extract_patient_id, UnauthorizedError
 from carethread.shared.repository import get_repository
 from carethread.shared.repository.exceptions import EntityNotFoundError, DatabaseError
 from carethread.shared.schemas.api import RecordFieldPatchRequest
@@ -33,7 +33,7 @@ def handle_get_record(
         return error_response(401, "UNAUTHORIZED", str(e))
 
     try:
-        record = service.get_patient_record(patient_id)
+        record = service.get_patient_record(patient_id, claims=extract_claims(event))
         return make_response(200, record.model_dump())
     except Exception as e:
         logger.error("Failed to retrieve record for patient %s: %s", patient_id, e)

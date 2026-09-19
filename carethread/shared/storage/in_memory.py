@@ -33,6 +33,14 @@ class InMemoryStorageService(StorageServiceInterface):
         ext = extract_extension(filename, content_type)
         return f"raw/{patient_id}/{doc_id}.{ext}"
 
+    def generate_download_url(self, s3_key: str, expires_in: int = 900) -> str:
+        if not s3_key or not s3_key.strip():
+            raise ValueError("s3_key must be a non-empty string")
+        return (
+            f"https://{self.bucket_name}.s3.amazonaws.com/{s3_key}"
+            f"?X-Amz-Expires={expires_in}&mock=true&op=get"
+        )
+
     def generate_upload_url(
         self,
         patient_id: str,

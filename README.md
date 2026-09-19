@@ -26,7 +26,7 @@ carethread/
 ├── api/             # REST handlers and the unified router
 ├── data/            # curated drug index, NTI list, reference ranges
 ├── infra/           # SAM template
-└── tests/           # 209 tests
+└── tests/           # 231 tests
 ```
 
 ## Local development
@@ -64,9 +64,11 @@ Set these parameters:
 - `BedrockModelId` — the newest multimodal Claude model enabled in your account.
 - `WebOrigin` — the Amplify domain, so CORS is not a wildcard.
 - `DemoMode` — `true` compresses a reminder "day" to 30 seconds.
+- `CallbackUrl` / `LogoutUrl` — where the Cognito hosted UI returns the user.
+- `HostedUiPrefix` — must be globally unique in the region.
 
-Copy the stack outputs (`ApiUrl`, `UserPoolId`, `ClientId`, `BucketName`) into
-the web app's `.env`.
+Copy the stack outputs (`ApiUrl`, `UserPoolId`, `ClientId`, `HostedUiUrl`) into
+the web app's `.env`. None of them are secrets.
 
 ### Bedrock access
 
@@ -129,6 +131,30 @@ Rasterise → Classify → RouteByType ─┬→ ExtractX → ValidateSchema →
 
 All endpoints authenticate through the Cognito JWT authorizer. `patient_id`
 comes from the `sub` claim and is never accepted from the request body.
+
+### Notes for the web app
+
+- **Sign-in** uses the Cognito hosted UI (authorization code + PKCE, no client
+  secret). The sign-in page is the `HostedUiUrl` stack output. Set the
+  `CallbackUrl` and `LogoutUrl` parameters to your Amplify URL at deploy time.
+- **First `GET /record`** seeds a profile from the JWT claims, so `patient` is
+  never null. It returns `profile_complete: false` until the patient supplies
+  the age, sex and phone a token cannot carry — prompt for these and submit
+  them with `PATCH /record/{field}` against `sk: "PROFILE"`.
+- **`GET /documents/{id}`** returns `page_urls` alongside `pages`, index
+  aligned. The bucket blocks public access, so these presigned URLs are the
+  only way to render a scan or draw a bbox overlay. They expire in 15 minutes;
+  re-fetch rather than caching them.
+- **`POST /plan/generate`** also schedules the reminders and reports
+  `reminders_scheduled`. A zero there means the plan was saved but the reminder
+  channel is unconfigured.
+- **`bbox` is `[ymin, xmin, ymax, xmax]` on a 0-1000 grid** — Y first, not
+  pixels, not `[x, y, w, h]`. Scale to the rendered image size.
+- **Document status is a ten-state machine.** Poll `GET /documents/{id}` and
+  handle `unsupported`, `failed` and `review_required`, not just `ready`;
+  `error` carries a message that is safe to show the patient.
+- **Some fields read `"not stated"`.** A dose absent from the document is never
+  inferred. Render it as an amber `needs_review` chip, not as literal text.
 
 See `ARCHITECTURE.md` for the system design, `CONTRACTS.md` for the frozen data
 contracts, and `BUILD_STATUS.md` for current status and the defect log.

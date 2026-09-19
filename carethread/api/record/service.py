@@ -11,6 +11,7 @@ from carethread.shared.schemas.api import (
     RecordFieldPatchResponse,
     PlanDoneResponse,
 )
+from carethread.shared.schemas.patient import Patient
 from carethread.shared.schemas.plan_entry import SlotName, PlanEntry
 from carethread.shared.schemas.provenance import ProvenanceStatus
 from carethread.shared.repository.interfaces import PatientRepositoryInterface
@@ -21,6 +22,43 @@ from carethread.shared.repository.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+# A Cognito token carries no age, sex or phone. These placeholders mark the
+# fields as "not yet supplied by the patient" rather than inventing values.
+UNSET_AGE = 0
+UNSET_SEX = "Unknown"
+UNSET_PHONE = "not provided"
+
+
+def _display_name(claims: Dict[str, Any], patient_id: str) -> str:
+    """Best available name from the token, without inventing one."""
+    name = str(claims.get("name") or "").strip()
+    if name:
+        return name
+
+    parts = [
+        str(claims.get("given_name") or "").strip(),
+        str(claims.get("family_name") or "").strip(),
+    ]
+    joined = " ".join(p for p in parts if p)
+    if joined:
+        return joined
+
+    email = str(claims.get("email") or "").strip()
+    if email and "@" in email:
+        return email.split("@", 1)[0]
+    return email or f"Patient {patient_id[:8]}"
+
+
+def is_profile_complete(patient: Optional[Patient]) -> bool:
+    """True once the patient has supplied what the token could not."""
+    if patient is None:
+        return False
+    return (
+        patient.age != UNSET_AGE
+        and patient.sex != UNSET_SEX
+        and patient.phone != UNSET_PHONE
+    )
 
 # Controlled mutation allowlists per DynamoDB entity type
 ENTITY_ALLOWLIST: Dict[str, Dict[str, Set[str]]] = {
@@ -62,12 +100,53 @@ class RecordService:
     def __init__(self, repository: PatientRepositoryInterface) -> None:
         self.repo = repository
 
-    def get_patient_record(self, patient_id: str) -> PatientRecordResponse:
-        """Fetch the full canonical patient record from the single partition."""
+    def get_patient_record(
+        self,
+        patient_id: str,
+        claims: Optional[Dict[str, Any]] = None,
+    ) -> PatientRecordResponse:
+        """Fetch the full canonical patient record from the single partition.
+
+        A patient who has just signed up through Cognito has no PROFILE row
+        yet, which would leave the whole UI without a name to render. On the
+        first read we seed one from the verified JWT claims and mark it
+        incomplete, rather than returning a null patient.
+        """
         if not patient_id or not str(patient_id).strip():
             raise ValueError("patient_id must be a non-empty string")
 
-        return self.repo.get_patient_context(patient_id)
+        record = self.repo.get_patient_context(patient_id)
+
+        if record.patient is None:
+            record.patient = self._bootstrap_profile(patient_id, claims or {})
+
+        record.profile_complete = is_profile_complete(record.patient)
+        return record
+
+    def _bootstrap_profile(self, patient_id: str, claims: Dict[str, Any]) -> Optional[Patient]:
+        """Seed a PROFILE row from verified JWT claims.
+
+        Only values the token actually carries are used. Age and sex are not in
+        a Cognito token, so they are recorded as unset placeholders for the
+        patient to complete -- never guessed.
+        """
+        patient = Patient(
+            patient_id=patient_id,
+            name=_display_name(claims, patient_id),
+            age=UNSET_AGE,
+            sex=UNSET_SEX,
+            language=str(claims.get("locale") or "en").strip() or "en",
+            phone=str(claims.get("phone_number") or "").strip() or UNSET_PHONE,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+        try:
+            self.repo.create_patient(patient)
+            logger.info("Seeded profile for new patient %s from JWT claims", patient_id)
+        except Exception:
+            # A missing profile must not break the whole record read; the UI
+            # can still prompt, and the next call retries the write.
+            logger.exception("Could not persist bootstrapped profile for %s", patient_id)
+        return patient
 
     def patch_record_field(
         self,

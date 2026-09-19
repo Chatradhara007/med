@@ -32,6 +32,22 @@ Parameters:
     Description: >-
       Browser origin allowed to call the API. Set this to the Amplify domain
       before submission; the wildcard default is for local development only.
+  CallbackUrl:
+    Type: String
+    Default: http://localhost:5173/
+    Description: >-
+      Where the Cognito hosted UI returns the user after sign-in. Set this to
+      the Amplify URL once the web app is deployed.
+  LogoutUrl:
+    Type: String
+    Default: http://localhost:5173/
+    Description: Where the Cognito hosted UI returns the user after sign-out.
+  HostedUiPrefix:
+    Type: String
+    Default: carethread
+    Description: >-
+      Cognito hosted UI domain prefix. Must be globally unique across the
+      region; append a suffix if the deploy reports the prefix is taken.
   DemoMode:
     Type: String
     Default: "false"
@@ -105,6 +121,16 @@ Resources:
       UserPoolName: carethread-user-pool
       UsernameAttributes: [email]
       AutoVerifiedAttributes: [email]
+      # GET /record seeds a profile from these claims on first sign-in.
+      Schema:
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+        - Name: phone_number
+          AttributeDataType: String
+          Mutable: true
+          Required: false
       Policies:
         PasswordPolicy:
           MinimumLength: 8
@@ -112,6 +138,14 @@ Resources:
           RequireNumbers: false
           RequireSymbols: false
           RequireUppercase: false
+
+  # Hosted UI: the build documentation is explicit that login must not be
+  # hand-built. Without this domain there is no sign-in page to send users to.
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !Sub ${HostedUiPrefix}-${AWS::AccountId}
 
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
@@ -123,6 +157,28 @@ Resources:
         - ALLOW_USER_SRP_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
         - ALLOW_USER_PASSWORD_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        # Authorization code with PKCE; the SPA holds no client secret.
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      CallbackURLs:
+        - !Ref CallbackUrl
+      LogoutURLs:
+        - !Ref LogoutUrl
+      # Tokens the API Gateway JWT authorizer validates.
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
 
   # 4. HTTP API Gateway with JWT Authorizer
   HttpApi:
@@ -435,6 +491,9 @@ Outputs:
   ClientId:
     Description: Cognito User Pool App Client ID
     Value: !Ref UserPoolClient
+  HostedUiUrl:
+    Description: Cognito hosted UI sign-in page
+    Value: !Sub https://${HostedUiPrefix}-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com
   BucketName:
     Description: CareThread S3 Document Bucket Name
     Value: !Ref DocBucket

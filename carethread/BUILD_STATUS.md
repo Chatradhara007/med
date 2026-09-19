@@ -22,8 +22,8 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m pytest carethread/tests -q
 ```
 
-**209 passed** — 155 module/API tests, 29 ingest-pipeline tests, 25 hardening
-regression tests.
+**231 passed** — 155 module/API tests, 29 ingest-pipeline tests, 25 hardening
+regression tests, 22 frontend-wiring tests.
 
 ## Real vs mocked dependencies
 
@@ -101,6 +101,31 @@ silently serve fixture data.
     `*` only for local development.
 20. **`verify_medication_action_safety` had an operator-precedence bug** that
     would skip the drug-name check for a medication carrying no salt.
+
+## Frontend wiring pass
+
+Four gaps stood between a working backend and a web app that could consume it.
+All four are closed and covered by `tests/test_frontend_wiring.py`.
+
+1. **No patient profile was ever created.** `create_patient` had no caller
+   outside tests, so a patient who had just signed up through Cognito got
+   `patient: null` from `GET /record` and every screen showing a name broke.
+   The first read now seeds a profile from the verified JWT claims and returns
+   `profile_complete: false` until the patient supplies the age, sex and phone
+   a token cannot carry. Those three are placeholders, never guesses.
+2. **No way to display a document.** `pages` returned raw S3 keys against a
+   bucket that correctly blocks all public access, so the document detail
+   screen and the bbox overlay — the "show original" safety rail — could not be
+   built at all. `GET /documents/{id}` now also returns index-aligned,
+   15-minute presigned `page_urls`, minted only after the document has been
+   fetched patient-scoped.
+3. **Reminders were never scheduled.** M5 was complete and tested as a unit
+   with nothing calling it. `POST /plan/generate` now schedules them and
+   reports `reminders_scheduled`. Deliberately best-effort: an unconfigured
+   reminder channel must not lose a care plan that was already persisted.
+4. **No Cognito hosted UI.** The pool and client existed but there was no
+   domain, no OAuth flows and no callback URLs, so there was no sign-in page.
+   Added, using authorization code with PKCE and no client secret.
 
 ## What is still mocked, deliberately
 

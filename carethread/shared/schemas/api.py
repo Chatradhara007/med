@@ -37,6 +37,14 @@ class DocumentStatusResponse(BaseModel):
     status: DocumentStatus = Field(..., description="Current document status")
     type: Optional[DocumentType] = Field(default=None, description="Classified document type")
     pages: List[str] = Field(default_factory=list, description="List of rasterised page S3 keys")
+    page_urls: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Presigned GET URLs for the rasterised pages, index-aligned with 'pages'. "
+            "The bucket blocks public access, so these are the only way the UI can "
+            "render a scan or draw a bbox overlay. Short-lived; re-fetch when expired."
+        ),
+    )
     error: Optional[str] = Field(default=None, description="Failure diagnostic message if status=failed")
 
 
@@ -50,6 +58,14 @@ class PatientRecordResponse(BaseModel):
     lab_results: List[LabResult] = Field(default_factory=list, description="Reported laboratory results")
     plan_entries: List[PlanEntry] = Field(default_factory=list, description="Day-by-day care schedule slots")
     alerts: List[FiredAlert] = Field(default_factory=list, description="Active escalation warnings")
+    profile_complete: bool = Field(
+        default=True,
+        description=(
+            "False when the profile was seeded from JWT claims and still needs "
+            "details the token cannot supply (age, sex, phone). The UI should "
+            "prompt for them and submit via PATCH /record/{field}."
+        ),
+    )
 
 
 # --- PATCH /record/field ---
