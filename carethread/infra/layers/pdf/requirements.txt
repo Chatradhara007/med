@@ -4,8 +4,12 @@
 # to install, and it is permissively licensed (BSD-3-Clause / Apache-2.0) --
 # unlike PyMuPDF, which is AGPL unless separately licensed.
 #
+# Deliberately NOT pinned against Pillow. Page images are encoded as PNG with
+# the standard library, so the layer carries no compiled imaging dependency.
+# Pillow 12.3.0 shipped without a cp311 wheel, which made `sam build` fall back
+# to an sdist and fail outright; nothing here can break that way again.
+#
 # The wheel is platform specific. Build with `sam build --use-container` on
-# macOS or Windows, or the wheel for your laptop will be packaged and the
-# function will fail to import at runtime.
+# macOS or Windows, or the wheel for your laptop is packaged and the function
+# fails to import at runtime.
 pypdfium2>=4.30.0
-pillow>=10.2.0

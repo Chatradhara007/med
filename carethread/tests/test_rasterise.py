@@ -6,6 +6,7 @@ failure message are all pinned here.
 """
 
 import io
+import struct
 import zlib
 
 import pytest
@@ -280,6 +281,99 @@ def test_layer_requirements_pin_a_permissively_licensed_engine():
 
     reqs = (
         pathlib.Path(__file__).resolve().parents[1] / "infra" / "layers" / "pdf" / "requirements.txt"
-    ).read_text().lower()
-    assert "pypdfium2" in reqs
-    assert "pillow" in reqs
+    ).read_text()
+    installed = [
+        line.strip()
+        for line in reqs.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    assert any(line.startswith("pypdfium2") for line in installed)
+
+
+def test_no_lambda_build_installs_a_compiled_imaging_dependency():
+    """Pillow 12.3.0 shipped with no cp311 wheel and broke `sam build`.
+
+    Page images are encoded with the standard library precisely so that a
+    release of a compiled imaging library cannot take the build down again.
+    """
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    for manifest in (
+        root / "requirements.txt",
+        root / "carethread" / "infra" / "layers" / "pdf" / "requirements.txt",
+    ):
+        installed = [
+            line.strip().lower()
+            for line in manifest.read_text().splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        assert not any(line.startswith("pillow") for line in installed), (
+            f"{manifest.name} installs Pillow into a Lambda build"
+        )
+
+
+# ==================================================
+# 5. PNG encoding without Pillow
+# ==================================================
+
+def test_pages_render_with_pillow_unavailable(monkeypatch):
+    """The render path must not need a compiled imaging library."""
+    import sys
+
+    monkeypatch.setitem(sys.modules, "PIL", None)
+    monkeypatch.setitem(sys.modules, "PIL.Image", None)
+
+    pages = rasterise._render_pdf_pages(_make_pdf(page_count=2))
+    assert len(pages) == 2
+    for page in pages:
+        assert page.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_raw_encoder_writes_a_valid_png_header():
+    png = rasterise._png_from_raw(b"\x00\x00\xff" * 4, width=2, height=2, stride=6, mode="BGR")
+
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    width, height, depth, colour_type = struct.unpack(">IIBB", png[16:26])
+    assert (width, height, depth, colour_type) == (2, 2, 8, 2)
+
+
+def test_raw_encoder_swaps_bgr_to_rgb():
+    """PDFium hands back BGR; PNG wants RGB. Getting this wrong tints every scan."""
+    # One pure-red pixel, expressed BGR as PDFium would give it.
+    png = rasterise._png_from_raw(b"\x00\x00\xff", width=1, height=1, stride=3, mode="BGR")
+
+    idat = b""
+    pos = 8
+    while pos < len(png):
+        length = struct.unpack(">I", png[pos:pos + 4])[0]
+        if png[pos + 4:pos + 8] == b"IDAT":
+            idat += png[pos + 8:pos + 8 + length]
+        pos += 12 + length
+
+    raw = zlib.decompress(idat)
+    assert tuple(raw[1:4]) == (255, 0, 0), "channels are swapped"
+
+
+def test_raw_encoder_honours_stride_padding():
+    """Stride can exceed width x channels; the padding must not leak into the image."""
+    # 1px wide, 2 rows, stride padded to 4 bytes.
+    raw = b"\x00\x00\xff\x99" + b"\xff\x00\x00\x99"
+    png = rasterise._png_from_raw(raw, width=1, height=2, stride=4, mode="BGR")
+
+    idat = b""
+    pos = 8
+    while pos < len(png):
+        length = struct.unpack(">I", png[pos:pos + 4])[0]
+        if png[pos + 4:pos + 8] == b"IDAT":
+            idat += png[pos + 8:pos + 8 + length]
+        pos += 12 + length
+
+    decoded = zlib.decompress(idat)
+    assert tuple(decoded[1:4]) == (255, 0, 0)     # row 0, padding dropped
+    assert tuple(decoded[5:8]) == (0, 0, 255)     # row 1
+
+
+def test_unknown_bitmap_mode_is_rejected():
+    with pytest.raises(UnsupportedDocumentError):
+        rasterise._png_from_raw(b"\x00" * 4, width=1, height=1, stride=4, mode="CMYK")

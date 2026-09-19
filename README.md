@@ -26,7 +26,7 @@ carethread/
 ├── api/             # REST handlers and the unified router
 ├── data/            # curated drug index, NTI list, reference ranges
 ├── infra/           # SAM template
-└── tests/           # 248 tests
+└── tests/           # 254 tests
 ```
 
 ## Local development
@@ -86,6 +86,12 @@ it is permissively licensed where PyMuPDF is AGPL.
 **Build with `sam build --use-container` on macOS or Windows.** The wheel is
 platform specific; without the container flag SAM packages the wheel for your
 own laptop and the function fails at import.
+
+Page images are encoded as PNG with the standard library, so **no Lambda build
+installs a compiled imaging dependency**. That is deliberate: Pillow 12.3.0
+shipped without a cp311 wheel, `sam build` refused to compile the sdist in the
+build container, and the whole build failed. Nothing in the render path can
+break that way now.
 
 The handler tries pypdfium2, then PyMuPDF, then pdf2image, falling through on
 failure. Swapping engines is a one-line change to the layer's
