@@ -91,14 +91,31 @@ export interface UpdateRecordFieldRequest {
   value: Record<string, unknown>;
 }
 
+export interface CareEpisode {
+  title: string;
+  startDate: string;
+  status: string;
+  department: string;
+}
+
+export interface CareTeamMember {
+  role: string;
+  name: string;
+  department: string;
+}
+
 export interface PatientRecord {
   patient: Patient;
   alerts: Alert[];
   carePlan: CarePlanItem[];
   recentDocuments: DocumentMetadata[];
+  // Phase 6 extensions
+  currentEpisode?: CareEpisode;
+  activeMedications?: MedicationValue[];
+  allergies?: string[];
+  careTeam?: CareTeamMember[];
 }
 
-// Phase 5: Substitution Types
 export interface SubstitutionRequest {
   doc_id?: string;
   brand?: string;

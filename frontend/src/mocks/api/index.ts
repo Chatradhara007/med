@@ -106,7 +106,23 @@ const mockRecord: PatientRecord = {
       type: 'medication'
     }
   ],
-  recentDocuments: []
+  recentDocuments: [],
+  currentEpisode: {
+    title: 'Cardiology Follow-up',
+    startDate: '2026-09-12',
+    status: 'Active',
+    department: 'Cardiology'
+  },
+  activeMedications: [
+    { name: 'Metformin', strength: '500mg', frequency: 'Twice daily' },
+    { name: 'Atorvastatin', strength: '20mg', frequency: 'Once daily' },
+    { name: 'Aspirin', strength: '75mg', frequency: 'Once daily' }
+  ],
+  allergies: ['Penicillin'],
+  careTeam: [
+    { role: 'Primary Care', name: 'Dr. Sarah Connor', department: 'General Practice' },
+    { role: 'Consultant', name: 'Dr. Alan Grant', department: 'Cardiology' }
+  ]
 };
 
 let scenarioCounter = 0;
@@ -227,7 +243,7 @@ export const mockApi = {
               {
                 severity: 'high',
                 message: 'May increase risk of bleeding or kidney issues when taken alongside current medications.',
-                activeMedication: 'Metformin 500mg',
+                activeMedication: 'Metformin 500mg', // Note: Same as activeMedications in mockRecord
                 newMedication: 'Ibuprofen 400mg'
               }
             ]

@@ -1,0 +1,115 @@
+
+.profile-page {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 24px;
+}
+
+.profile-header h1 {
+  margin: 0 0 20px 0;
+  font-size: 1.8rem;
+  color: #1e293b;
+}
+
+.profile-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.profile-card {
+  background-color: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 2px 4px -1px rgba(0,0,0,0.05);
+}
+
+.profile-card h3 {
+  margin: 0 0 16px 0;
+  font-size: 1.2rem;
+  color: #334155;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 8px;
+}
+
+/* Patient Info */
+.patient-info-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+}
+.avatar-placeholder {
+  width: 80px; height: 80px;
+  background-color: #3b82f6;
+  color: white;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2.5rem; font-weight: 600;
+  margin-bottom: 16px;
+}
+.patient-details h2 { margin: 0 0 16px 0; font-size: 1.5rem; color: #0f172a; }
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  text-align: left;
+  width: 100%;
+}
+.meta-item { display: flex; flex-direction: column; gap: 4px; }
+.meta-item label { font-size: 0.8rem; color: #64748b; text-transform: uppercase; font-weight: 600; }
+.meta-item span { font-weight: 500; color: #334155; }
+.status-pill { display: inline-block; padding: 2px 8px; background-color: #dcfce7; color: #166534; border-radius: 999px; font-size: 0.85rem; font-weight: 600; width: max-content; }
+
+/* Medications */
+.med-list { display: flex; flex-direction: column; gap: 12px; }
+.med-item { display: flex; align-items: center; gap: 12px; padding: 12px; background-color: #f8fafc; border-radius: 8px; }
+.med-icon { font-size: 1.5rem; }
+.med-info { display: flex; flex-direction: column; }
+.med-info strong { color: #1e293b; }
+.med-info span { font-size: 0.85rem; color: #64748b; }
+
+/* Allergies */
+.allergy-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.allergy-item { display: flex; align-items: center; gap: 8px; padding: 12px; background-color: #fef2f2; color: #991b1b; border-radius: 8px; font-weight: 500; }
+.no-data { color: #94a3b8; font-style: italic; margin: 0; }
+
+/* Care Team */
+.team-list { display: flex; flex-direction: column; gap: 12px; }
+.team-item { display: flex; flex-direction: column; padding: 12px; background-color: #f8fafc; border-radius: 8px; }
+.team-role { font-size: 0.8rem; color: #3b82f6; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+.team-name { font-weight: 600; color: #1e293b; }
+.team-dept { font-size: 0.85rem; color: #64748b; }
+
+/* Records Summary */
+.records-count { margin: 0 0 12px 0; color: #64748b; }
+.recent-docs-list { margin: 0 0 16px 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.doc-link { display: block; padding: 12px; background-color: #f1f5f9; border-radius: 8px; text-decoration: none; color: #334155; font-weight: 500; transition: background 0.2s; }
+.doc-link:hover { background-color: #e2e8f0; }
+.view-all-btn { display: block; text-align: center; padding: 12px; background-color: white; border: 1px solid #cbd5e1; color: #334155; border-radius: 8px; text-decoration: none; font-weight: 600; transition: background 0.2s; }
+.view-all-btn:hover { background-color: #f8fafc; }
+
+/* Preferences */
+.pref-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+.pref-item:last-child { border-bottom: none; padding-bottom: 0; }
+.pref-val { color: #64748b; font-weight: 500; }
+
+/* Dark Mode Overrides */
+@media (prefers-color-scheme: dark) {
+  .profile-header h1 { color: #f8fafc; }
+  .profile-card { background-color: #1e293b; border-color: #334155; }
+  .profile-card h3 { color: #cbd5e1; border-color: #334155; }
+  .patient-info-card { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); }
+  .patient-details h2 { color: #f8fafc; }
+  .meta-item span, .med-info strong, .team-name, .pref-item { color: #e2e8f0; }
+  .med-item, .team-item { background-color: #0f172a; }
+  .allergy-item { background-color: #450a0a; color: #fca5a5; }
+  .doc-link { background-color: #334155; color: #e2e8f0; }
+  .doc-link:hover { background-color: #475569; }
+  .view-all-btn { background-color: #1e293b; border-color: #475569; color: #e2e8f0; }
+  .view-all-btn:hover { background-color: #334155; }
+  .status-pill { background-color: #064e3b; color: #86efac; }
+}
