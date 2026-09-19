@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Medication",
+  "description": "Prescription record stored under PK = PATIENT#<id>, SK = MED#<normalised_name>",
+  "type": "object",
+  "required": ["name", "salt", "strength", "freq", "duration_days", "provenance"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "salt": { "type": "string", "minLength": 1 },
+    "strength": { "type": "string", "minLength": 1 },
+    "form": { "type": "string", "default": "tablet" },
+    "freq": { "type": "string", "minLength": 1 },
+    "duration_days": { "type": "integer", "minimum": 0 },
+    "start_date": { "type": ["string", "null"] },
+    "instructions": { "type": ["string", "null"] },
+    "provenance": { "$ref": "provenance.json" }
+  },
+  "additionalProperties": false
+}

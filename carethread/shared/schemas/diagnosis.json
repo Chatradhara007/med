@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Diagnosis",
+  "description": "Clinical diagnosis record stored under PK = PATIENT#<id>, SK = DIAG#<code_or_slug>",
+  "type": "object",
+  "required": ["label", "provenance"],
+  "properties": {
+    "label": { "type": "string", "minLength": 1 },
+    "code_or_slug": { "type": ["string", "null"] },
+    "icd_hint": { "type": ["string", "null"] },
+    "status": { "type": "string", "enum": ["active", "resolved"], "default": "active" },
+    "provenance": { "$ref": "provenance.json" }
+  },
+  "additionalProperties": false
+}
