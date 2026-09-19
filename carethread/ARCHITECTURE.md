@@ -98,3 +98,28 @@ Amazon S3 (carethread-docs)
 - **Presigned Expiration:** 300 seconds strictly enforced.
 - **Tenant Isolation:** Patients only receive presigned PUT credentials for their own `raw/<patient_id>/` path.
 
+---
+
+## 5. M2 — Care Plan Architecture
+
+```text
+Canonical Patient Record (DynamoDB PK = PATIENT#<id>)
+        ↓
+Relevant Clinical Context (Active Diagnoses, Medications, Restrictions, Follow-ups)
+        ↓
+Deterministic Rules Engine (Static rules.yaml — fever, cardiac chest pain, vitals)
+        ↓
+Optional LLM Formatter (Strict plain-language translation; cannot alter dosages/rules)
+        ↓
+PlanEntry Objects (Day 0 to Day 6 across Morning, Afternoon, Evening, Night)
+        ↓
+DynamoDB Single-Table Persistence (PK = PATIENT#<id>, SK = PLAN#<day_index>#<slot>)
+```
+
+### 5.1 Deterministic Clinical Invariant
+- **The rules decide. LLMs only format and translate.**
+- Escalation rules are loaded strictly from `rules.yaml` (`fever_persistent`, `post_cardiac_chest_pain`, `hypoglycemia_acute`, `severe_shortness_of_breath`, `hypertensive_crisis`).
+- LLMs are mechanically prevented from inventing escalation thresholds or altering drug doses.
+- Every `PlanEntry` inherits and preserves the verified provenance citation from the source clinical entity.
+
+

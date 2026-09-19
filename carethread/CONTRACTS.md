@@ -263,9 +263,9 @@ All endpoints are authenticated via Amazon Cognito JWT Authorizer. `patient_id` 
 | :--- | :--- | :--- | :--- |
 | **M0 (Infra)** | - | `Patient`, `Document` | **NOT IMPLEMENTED YET** (Skeleton in place) |
 | **M1 (Ingest Pipeline)** | S3 object, `Document` | `ExtractionResult`, `Medication`, `LabResult`, `Diagnosis`, `ProvenanceEnvelope` | **NOT IMPLEMENTED YET** |
-| **M2 (Care Plan)** | `Medication`, `Diagnosis`, `rules.yaml` | `PlanEntry`, `FiredAlert` | **NOT IMPLEMENTED YET** |
+| **M2 (Care Plan)** | `Medication`, `Diagnosis`, `rules.yaml`, `DischargeRestriction`, `DischargeFollowup` | `PlanEntry`, `FiredAlert` | **IMPLEMENTED (PASS)** |
 | **M3 (Lab Interpreter)** | `LabResult`, `Medication`, `Diagnosis`, `ref_ranges.csv` | Ranked `LabResult`, cross-module `FiredAlert` | **NOT IMPLEMENTED YET** |
 | **M4 (Substitution Check)** | `MedicineStripExtraction`, `drugs.csv`, `nti.csv`, active `Medication` | `SubstitutionResponse` (with NTI block guardrail) | **NOT IMPLEMENTED YET** |
 | **M5 (Reminders)** | `PlanEntry`, `Patient` | SNS push notification payload | **NOT IMPLEMENTED YET** |
-| **M6 (APIs)** | API Requests | API Responses (`PatientRecordResponse`, etc.) | **NOT IMPLEMENTED YET** |
+| **M6 (APIs)** | API Requests | API Responses (`PatientRecordResponse`, etc.) | **PARTIAL** (`POST /documents`, `GET /documents/{id}` PASS) |
 | **M7 (Cross-Module)** | `Medication`, `LabResult`, `Diagnosis` | Cross-module `FiredAlert` (e.g. Metformin + Creatinine) | **NOT IMPLEMENTED YET** |
