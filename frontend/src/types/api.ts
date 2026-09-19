@@ -25,8 +25,19 @@ export interface DocumentMetadata {
   id: string;
   name: string;
   type: string;
-  status: 'ready' | 'processing' | 'failed';
+  status: 'uploaded' | 'processing' | 'ready' | 'failed';
   uploadedAt: string;
+  errorReason?: string;
+}
+
+export interface CreateDocumentRequest {
+  filename: string;
+  content_type: string;
+}
+
+export interface CreateDocumentResponse {
+  doc_id: string;
+  upload_url: string;
 }
 
 export interface PatientRecord {
