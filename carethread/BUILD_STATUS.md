@@ -11,15 +11,17 @@
 | **M4** | Substitution Check | **PASS** | 14/14 Tests Passed | Salt-equivalent matching from `drugs.csv`, NTI hard-block (`nti.csv`), strength/form divergence flags, canonical active medication cross-check, advisory warnings. |
 | **M5** | Reminders Workflow | **PASS** | 20/20 Tests Passed | EventBridge trigger, adherence suppression (`done=True`), single-table idempotency (`REMINDER#<id>`), demo mode compression (30s), safe generic SNS notifications. |
 | **M1** | Ingest Pipeline & Orchestration | **NOT STARTED** | - | Awaiting Step Functions, rasterisation, Bedrock multimodal extraction, and bbox matching. |
-| **M6** | Core API Handlers & End-to-End Verification | **PARTIAL** | 13/13 Tests Passed | `POST /documents`, `GET /documents/{id}` PASS. Remaining endpoints pending. |
+| **API Layer (M10)** | Complete REST API & Unified Router | **PASS** | 26/26 Tests Passed | All endpoints (`POST /documents`, `GET /documents/{id}`, `GET /record`, `PATCH /record/{field}`, `POST /substitution`, `POST /plan/{day}/{slot}/done`, `POST /plan/generate`, `POST /labs/interpret`), strict CORS, allowlists, structured error shape. |
 
 ---
 
 ### Test Execution Summary (Current)
-- **Total Test Suite:** `carethread/tests/` (129 tests)
-- **Results:** **129 passed, 0 failed, 0 errors**
-- **Execution Time:** ~0.49 seconds
+- **Total Test Suite:** `carethread/tests/` (155 tests)
+- **Results:** **155 passed, 0 failed, 0 errors**
+- **Execution Time:** ~0.67 seconds
 - **Dependencies (Real vs Mocked):**
+  - `REST API Handlers`: **REAL / LOCAL** (Dispatched via `carethread/api/router.py` or individual Lambda functions)
+  - `Cognito JWT Auth`: **REAL / LOCAL** (Cognito JWT authorizer extraction with demo mock fallback `ALLOW_MOCK_AUTH=true`)
   - `Curated Drug Index`: **REAL DATA** (`data/drugs.csv` with 200+ vetted bioequivalent formulations)
   - `NTI Database`: **REAL DATA** (`data/nti.csv` with 10 clinical hard-block rules)
   - `Reference Range Source`: **REAL DATA** (`data/ref_ranges.csv` with 35 biological reference intervals)

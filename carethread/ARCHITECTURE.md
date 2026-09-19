@@ -260,6 +260,52 @@ Patient Device (CareThread notification)
 - Outgoing payload standard: Generic recovery reminders directing the patient to open the authenticated CareThread application (e.g. *"CareThread reminder: It is time for your Morning care-plan activities. Please check your schedule in the CareThread app."*).
 - `MockNotificationPublisher` enforces automated regex scanning for clinical terms to prevent accidental information leaks.
 
+---
+
+## 9. CareThread API Layer Architecture (Module 10)
+
+The CareThread API layer exposes the unified clinical backend to frontend clients, enforcing strict authentication, provenance protection, and controlled mutations.
+
+### 9.1 Core API Surface
+
+| Method | Path | Purpose | Input | Output |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/documents` | Register document metadata & generate S3 presigned PUT URL | `DocumentCreateRequest` | `DocumentCreateResponse` (201) |
+| `GET` | `/documents/{id}` | Query document ingestion lifecycle and rasterized pages | Path `id` | `DocumentStatusResponse` (200) |
+| `GET` | `/record` | Retrieve full canonical episodic record from single partition | None (JWT `sub`) | `PatientRecordResponse` (200) |
+| `PATCH`| `/record/{field}` | Controlled entity field update with allowlist & provenance preservation | `RecordFieldPatchRequest` | `RecordFieldPatchResponse` (200) |
+| `POST` | `/substitution` | Bioequivalent formulary screening, NTI hard-block & interaction cross-check | `SubstitutionRequest` | `SubstitutionResponse` (200) |
+| `POST` | `/plan/{day}/{slot}/done` | Confirm dose adherence and trigger M5 reminder suppression | Path `day`, `slot` | `PlanDoneResponse` (200) |
+| `POST` | `/plan/generate` | Trigger 7-day care plan compilation from active prescriptions | None (JWT `sub`) | `CarePlanResult` (200) |
+| `POST` | `/labs/interpret` | Trigger deterministic lab report analysis against reference intervals | None (JWT `sub`) | `LabInterpretationReport` (200) |
+
+### 9.2 Security Invariants & Authentication
+1. **Authenticated Patient Identity:** `patient_id` is derived strictly from the Cognito JWT authorizer `sub` claim (`requestContext.authorizer.jwt.claims.sub`). Request body `patient_id` is strictly ignored and rejected if attempting spoofing.
+2. **Local/Demo Authentication:** For local judging or offline testing, `ALLOW_MOCK_AUTH=true` permits the `X-Patient-Id` header to be evaluated safely by [`carethread/shared/auth/extractor.py`](file:///c:/Users/CHATRADHARA/Downloads/fail/med/carethread/shared/auth/extractor.py).
+3. **Controlled Mutation Allowlists (`PATCH /record/{field}`):**
+   - Direct arbitrary DynamoDB updates are strictly prohibited.
+   - Allowlists enforce editable attributes:
+     - `PROFILE`: `name`, `age`, `phone`, `language`, `sex`
+     - `MED#*`: `strength`, `freq`, `instructions`, `duration_days`, `status`
+     - `DIAG#*`: `code`, `status`, `notes`, `display_name`
+     - `PLAN#*`: `action`, `time_target`, `done`
+   - Immutable attributes: `PK`, `SK`, `patient_id`, `created_at`, and OCR provenance citations (`source`, `doc_id`, `page`, `bbox`, `verbatim`).
+   - Resolving a `needs_review` chip automatically transitions the item's provenance status to `confirmed`.
+
+### 9.3 Consistent HTTP Error Envelope
+All error responses across all endpoints adhere to the structured error contract:
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable diagnostic explanation",
+    "details": []
+  }
+}
+```
+Standard status codes: `200 OK`, `201 Created`, `400 Bad Request`, `401 Unauthorized`, `404 Not Found`, `405 Method Not Allowed`, `500 Internal Server Error`. Zero internal stack traces or raw exceptions are leaked to the client.
+
+
 
 
 
