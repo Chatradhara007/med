@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import type { DocumentMetadata } from '../../../types/api';
+import type { DocumentMetadata, SourceMetadata } from '../../../types/api';
 import { getDocument } from '../../../api/documents';
 import { ProcessingStatus } from '../components/ProcessingStatus';
+import { ExtractedFieldCard } from '../components/ExtractedFieldCard';
+import { DocumentViewer } from '../components/DocumentViewer';
 import '../Documents.css';
 
 export const DocumentDetailPage = () => {
@@ -10,6 +12,8 @@ export const DocumentDetailPage = () => {
   const [document, setDocument] = useState<DocumentMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeFieldSk, setActiveFieldSk] = useState<string | null>(null);
+  const [activeSource, setActiveSource] = useState<SourceMetadata | null>(null);
 
   const fetchDocument = useCallback(async () => {
     if (!id) return;
@@ -29,12 +33,11 @@ export const DocumentDetailPage = () => {
     setLoading(true);
     fetchDocument();
     
-    // Poll to watch status updates
-    const interval = setInterval(fetchDocument, 2000);
+    const interval = setInterval(fetchDocument, 5000);
     return () => clearInterval(interval);
   }, [fetchDocument]);
 
-  if (loading) return <div className="loading">Loading document...</div>;
+  if (loading && !document) return <div className="loading">Loading document...</div>;
   if (error || !document) {
     return (
       <div className="document-detail-page">
@@ -69,18 +72,24 @@ export const DocumentDetailPage = () => {
         </div>
       )}
 
-      {document.status === 'uploaded' && (
-        <div className="doc-processing-banner">
-          <p>Document has been successfully uploaded and is queued for processing.</p>
-        </div>
-      )}
-
       <div className="doc-detail-content">
         <section className="doc-extracted-pane">
           <h3>Extracted Information</h3>
           {document.status === 'ready' ? (
-             <div className="placeholder-box">
-               <p>[Phase 4: Extracted entities, medications, diagnoses, and lab results will appear here.]</p>
+             <div className="extracted-fields-list">
+               {document.extractedData && document.extractedData.length > 0 ? (
+                 document.extractedData.map(field => (
+                   <ExtractedFieldCard 
+                     key={field.sk} 
+                     field={field} 
+                     isActiveSource={activeFieldSk === field.sk}
+                     onShowOriginal={(source) => { setActiveSource(source); setActiveFieldSk(field.sk); }}
+                     onRefresh={fetchDocument}
+                   />
+                 ))
+               ) : (
+                 <p className="not-ready-text">No clinical entities were extracted from this document.</p>
+               )}
              </div>
           ) : (
             <p className="not-ready-text">Extracted information will be available once processing completes.</p>
@@ -89,9 +98,7 @@ export const DocumentDetailPage = () => {
 
         <section className="doc-original-pane">
           <h3>Original Document</h3>
-          <div className="placeholder-box doc-viewer">
-            <p>[Phase 4: Original PDF/Image Viewer with bounding box highlighting will render here.]</p>
-          </div>
+          <DocumentViewer documentName={document.name} sourceHighlight={activeSource} />
         </section>
       </div>
     </div>
