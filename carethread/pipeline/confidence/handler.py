@@ -346,6 +346,15 @@ def handle_failure(
 ) -> Dict[str, Any]:
     """Mark the document failed with a reason the UI can surface."""
     payload = dict(event or {})
+
+    # The state machine hands the whole failed state under "input", because a
+    # Rasterise failure happens before patient_id/doc_id exist and a JSONPath
+    # for them would fail the HandleFailure state itself.
+    if isinstance(payload.get("input"), dict):
+        nested = dict(payload["input"])
+        nested.setdefault("error", payload.get("error"))
+        payload = nested
+
     error = payload.get("error") or {}
     reason = (
         error.get("Cause")

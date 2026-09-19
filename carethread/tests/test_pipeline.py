@@ -475,3 +475,67 @@ def test_unlocatable_verbatim_falls_back_to_page_highlight():
 
 def test_normalise_collapses_ocr_whitespace():
     assert normalise("  Tab.   Metformin\n500mg ") == "tab. metformin 500mg"
+
+
+# ==================================================
+# 10. HandleFailure must survive a Rasterise failure
+# ==================================================
+
+def test_rasterise_failure_still_marks_the_document_failed(repo):
+    """Rasterise fails before patient_id/doc_id exist on the state.
+
+    The state machine sends the whole failed state under "input" for exactly
+    this reason. Resolving $.patient_id there would fail HandleFailure itself
+    and leave the document stuck at "rasterising" forever, spinning in the UI.
+    """
+    # Precisely what Step Functions delivers after Rasterise fails: the
+    # EventBridge input ({bucket, key}) plus the caught error, and nothing else.
+    event = {
+        "input": {
+            "bucket": BUCKET,
+            "key": f"raw/{PATIENT}/{DOC}.pdf",
+            "error": {
+                "Error": "UnsupportedDocumentError",
+                "Cause": "No PDF rasteriser available in this runtime",
+            },
+        }
+    }
+    result = handle_failure(event, repository=repo)
+
+    assert result["final_status"] == DocumentStatus.FAILED.value
+    document = repo.get_document(PATIENT, DOC)
+    assert document.status == DocumentStatus.FAILED
+    assert document.error_reason == "No PDF rasteriser available in this runtime"
+
+
+def test_handle_failure_still_accepts_a_flat_late_stage_state(repo):
+    """A failure after Rasterise carries patient_id/doc_id directly."""
+    event = {
+        "patient_id": PATIENT,
+        "doc_id": DOC,
+        "bucket": BUCKET,
+        "error": {"Cause": "Bedrock throttled"},
+    }
+    assert handle_failure(event, repository=repo)["final_status"] == DocumentStatus.FAILED.value
+    assert repo.get_document(PATIENT, DOC).error_reason == "Bedrock throttled"
+
+
+def test_state_machine_failure_path_resolves_against_the_eventbridge_input():
+    """Guard the JSONPath contract itself, not just the Lambda."""
+    import json as _json
+    import pathlib as _pathlib
+
+    asl = _json.loads(
+        (_pathlib.Path(__file__).resolve().parents[1]
+         / "pipeline" / "statemachine" / "ingest_pipeline.asl.json").read_text()
+    )
+    payload = asl["States"]["HandleFailure"]["Parameters"]["Payload"]
+
+    # The EventBridge rule supplies only these two fields.
+    available = {"bucket", "key", "error"}
+    for key, value in payload.items():
+        if key.endswith(".$") and value != "$":
+            field = value.split(".", 1)[1] if "." in value else value
+            assert field in available, (
+                f"HandleFailure resolves {value}, absent when Rasterise fails"
+            )
