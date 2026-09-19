@@ -22,8 +22,8 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m pytest carethread/tests -q
 ```
 
-**231 passed** — 155 module/API tests, 29 ingest-pipeline tests, 25 hardening
-regression tests, 22 frontend-wiring tests.
+**248 passed** — 155 module/API tests, 32 ingest-pipeline tests, 25 hardening
+regression tests, 22 frontend-wiring tests, 14 rasterisation tests.
 
 ## Real vs mocked dependencies
 
@@ -144,6 +144,6 @@ an unfinished path.
 | `WebOrigin` | The Amplify domain. Tighten from `*` before submission. |
 | `DemoMode` | `true` compresses a reminder "day" to 30 seconds for judging. |
 
-Rasterisation needs a PDF renderer in the Lambda layer (PyMuPDF or
-pdf2image/poppler). Without one, PDF uploads are marked `unsupported` with a
-clear patient-facing message rather than failing silently.
+Rasterisation ships in `PdfRenderLayer` (`infra/layers/pdf/`, pypdfium2),
+attached to `RasteriseFn` alone. Build with `sam build --use-container` on
+macOS or Windows or the wrong-platform wheel is packaged.

@@ -1,0 +1,11 @@
+# PDF rasterisation for the Rasterise Lambda only.
+#
+# pypdfium2 bundles the PDFium binary, so there is no poppler or system package
+# to install, and it is permissively licensed (BSD-3-Clause / Apache-2.0) --
+# unlike PyMuPDF, which is AGPL unless separately licensed.
+#
+# The wheel is platform specific. Build with `sam build --use-container` on
+# macOS or Windows, or the wheel for your laptop will be packaged and the
+# function will fail to import at runtime.
+pypdfium2>=4.30.0
+pillow>=10.2.0

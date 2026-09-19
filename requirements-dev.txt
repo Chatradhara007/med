@@ -1,2 +1,6 @@
 -r requirements.txt
 pytest>=8.0.0
+
+# Same PDF engine the RasteriseFn layer carries, so the local suite exercises
+# real rendering rather than skipping it.
+pypdfium2>=4.30.0

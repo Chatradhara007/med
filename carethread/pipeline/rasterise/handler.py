@@ -32,39 +32,101 @@ MAX_PAGES = int(os.environ.get("MAX_RASTER_PAGES", "20"))
 IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "heic", "tif", "tiff"}
 
 
-def _render_pdf_pages(pdf_bytes: bytes) -> List[bytes]:
-    """Render PDF pages to PNG bytes.
+def _encode_png(image: "Any") -> bytes:
+    """Encode a Pillow image as PNG bytes."""
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
 
-    Uses PyMuPDF when the layer provides it, else pdf2image/poppler. Both are
-    optional at import time so that a deployment carrying neither still fails
-    with a clear, patient-visible reason instead of an ImportError traceback.
-    """
+
+def _render_with_pypdfium2(pdf_bytes: bytes) -> Optional[List[bytes]]:
+    """Preferred renderer: permissively licensed, self-contained, fast."""
+    try:
+        import pypdfium2 as pdfium
+    except ImportError:
+        return None
+
+    scale = RASTER_DPI / 72.0  # PDF user space is 72 dpi
+    document = pdfium.PdfDocument(io.BytesIO(pdf_bytes))
+    try:
+        pages = []
+        for index in range(min(len(document), MAX_PAGES)):
+            bitmap = document[index].render(scale=scale)
+            pages.append(_encode_png(bitmap.to_pil()))
+        return pages
+    finally:
+        document.close()
+
+
+def _render_with_pymupdf(pdf_bytes: bytes) -> Optional[List[bytes]]:
+    """Fallback renderer. Capable, but AGPL unless separately licensed."""
     try:
         import fitz  # PyMuPDF
-
-        pages: List[bytes] = []
-        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-            for page in doc[:MAX_PAGES]:
-                pixmap = page.get_pixmap(dpi=RASTER_DPI)
-                pages.append(pixmap.tobytes("png"))
-        return pages
     except ImportError:
-        pass
+        return None
 
+    pages: List[bytes] = []
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as document:
+        for page in document[:MAX_PAGES]:
+            pages.append(page.get_pixmap(dpi=RASTER_DPI).tobytes("png"))
+    return pages
+
+
+def _render_with_pdf2image(pdf_bytes: bytes) -> Optional[List[bytes]]:
+    """Last resort: needs a poppler binary on PATH, not just a pip install."""
     try:
         from pdf2image import convert_from_bytes
-    except ImportError as exc:
-        raise UnsupportedDocumentError(
-            "No PDF rasteriser available in this runtime (install PyMuPDF or pdf2image)"
-        ) from exc
+    except ImportError:
+        return None
 
     images = convert_from_bytes(pdf_bytes, dpi=RASTER_DPI)[:MAX_PAGES]
-    pages = []
-    for image in images:
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        pages.append(buffer.getvalue())
-    return pages
+    return [_encode_png(image) for image in images]
+
+
+# Ordered by preference: licence, then self-containment, then capability.
+_RENDERERS = (
+    ("pypdfium2", _render_with_pypdfium2),
+    ("PyMuPDF", _render_with_pymupdf),
+    ("pdf2image", _render_with_pdf2image),
+)
+
+
+def _render_pdf_pages(pdf_bytes: bytes) -> List[bytes]:
+    """Render PDF pages to PNG bytes at 150 DPI.
+
+    Every backend is optional at import time. A deployment carrying none fails
+    with a clear, patient-facing reason rather than an ImportError traceback,
+    and a backend that is present but chokes on one file falls through to the
+    next rather than failing the upload outright.
+    """
+    last_error: Optional[Exception] = None
+
+    for name, render in _RENDERERS:
+        try:
+            pages = render(pdf_bytes)
+        except Exception as exc:
+            logger.warning("PDF renderer %s failed: %s", name, exc)
+            last_error = exc
+            continue
+
+        if pages is None:
+            continue  # backend not installed
+        if not pages:
+            raise UnsupportedDocumentError(
+                "This PDF contains no pages we could render"
+            )
+        logger.info("Rendered %d page(s) with %s", len(pages), name)
+        return pages
+
+    if last_error is not None:
+        raise UnsupportedDocumentError(
+            f"This PDF could not be opened: {last_error}"
+        ) from last_error
+
+    raise UnsupportedDocumentError(
+        "No PDF renderer is available in this runtime. Attach the PdfRenderLayer "
+        "(carethread/infra/layers/pdf) to this function."
+    )
 
 
 def _normalise_image(image_bytes: bytes) -> bytes:

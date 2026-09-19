@@ -368,12 +368,29 @@ Resources:
             Method: POST
 
   # 8. M1 Ingest Pipeline Lambdas
+
+  # Carried by RasteriseFn alone; the other functions have no use for a PDF
+  # engine and should not pay its size.
+  PdfRenderLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: carethread-pdf-render
+      Description: pypdfium2 + Pillow for rasterising uploaded PDFs
+      ContentUri: layers/pdf/
+      CompatibleRuntimes:
+        - python3.11
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.11
+
   RasteriseFn:
     Type: AWS::Serverless::Function
     Properties:
       Handler: carethread.pipeline.rasterise.app.handler
       Timeout: 120
       MemorySize: 2048
+      Layers:
+        - !Ref PdfRenderLayer
       Policies:
         - S3CrudPolicy: { BucketName: !Ref DocBucket }
         - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }

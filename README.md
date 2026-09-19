@@ -26,7 +26,7 @@ carethread/
 ├── api/             # REST handlers and the unified router
 ├── data/            # curated drug index, NTI list, reference ranges
 ├── infra/           # SAM template
-└── tests/           # 231 tests
+└── tests/           # 248 tests
 ```
 
 ## Local development
@@ -78,10 +78,20 @@ model is not enabled.
 
 ### PDF rasterisation
 
-The `RasteriseFn` needs a PDF renderer (PyMuPDF, or pdf2image with poppler) in
-its layer. Without one, PDF uploads are marked `unsupported` with a message the
-patient can act on, rather than failing silently. Camera photos need no extra
-layer.
+`RasteriseFn` carries the `PdfRenderLayer`
+(`carethread/infra/layers/pdf/`), which ships `pypdfium2` -- the PDFium engine
+inside the wheel, so there is no poppler and no system package to install, and
+it is permissively licensed where PyMuPDF is AGPL.
+
+**Build with `sam build --use-container` on macOS or Windows.** The wheel is
+platform specific; without the container flag SAM packages the wheel for your
+own laptop and the function fails at import.
+
+The handler tries pypdfium2, then PyMuPDF, then pdf2image, falling through on
+failure. Swapping engines is a one-line change to the layer's
+`requirements.txt`. If no engine is present the upload is marked `failed` with
+a message naming the missing layer, never an ImportError traceback. Camera
+photos need no layer at all.
 
 ## The ingest pipeline
 
