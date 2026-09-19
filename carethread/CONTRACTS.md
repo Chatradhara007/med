@@ -264,8 +264,62 @@ All endpoints are authenticated via Amazon Cognito JWT Authorizer. `patient_id` 
 | **M0 (Infra)** | - | `Patient`, `Document` | **NOT IMPLEMENTED YET** (Skeleton in place) |
 | **M1 (Ingest Pipeline)** | S3 object, `Document` | `ExtractionResult`, `Medication`, `LabResult`, `Diagnosis`, `ProvenanceEnvelope` | **NOT IMPLEMENTED YET** |
 | **M2 (Care Plan)** | `Medication`, `Diagnosis`, `rules.yaml`, `DischargeRestriction`, `DischargeFollowup` | `PlanEntry`, `FiredAlert` | **IMPLEMENTED (PASS)** |
-| **M3 (Lab Interpreter)** | `LabResult`, `Medication`, `Diagnosis`, `ref_ranges.csv` | Ranked `LabResult`, cross-module `FiredAlert` | **NOT IMPLEMENTED YET** |
+| **M3 (Lab Interpreter)** | `LabResult`, `Medication`, `Diagnosis`, `ref_ranges.csv` | `InterpretedLabFinding`, `LabInterpretationReport` | **IMPLEMENTED (PASS)** |
 | **M4 (Substitution Check)** | `MedicineStripExtraction`, `drugs.csv`, `nti.csv`, active `Medication` | `SubstitutionResponse` (with NTI block guardrail) | **NOT IMPLEMENTED YET** |
 | **M5 (Reminders)** | `PlanEntry`, `Patient` | SNS push notification payload | **NOT IMPLEMENTED YET** |
 | **M6 (APIs)** | API Requests | API Responses (`PatientRecordResponse`, etc.) | **PARTIAL** (`POST /documents`, `GET /documents/{id}` PASS) |
 | **M7 (Cross-Module)** | `Medication`, `LabResult`, `Diagnosis` | Cross-module `FiredAlert` (e.g. Metformin + Creatinine) | **NOT IMPLEMENTED YET** |
+
+---
+
+## 5. M3 — Lab Interpreter Contracts
+
+### 5.1 Service Interface
+```python
+def interpret_patient_labs(patient_id: str) -> LabInterpretationReport:
+    """Consumes canonical patient record and outputs structured interpretation report."""
+    ...
+```
+
+### 5.2 Input Schemas (Canonical Context)
+- `patient_id`: `string` (**REQUIRED**)
+- Extracted via `repository.get_patient_context(patient_id)`:
+  - `lab_results`: `list[LabResult]` (**REQUIRED**, must contain valid `provenance`)
+  - `diagnoses`: `list[Diagnosis]` (context only)
+  - `medications`: `list[Medication]` (context only)
+- Fallback Biological Reference Ranges (`data/ref_ranges.csv`):
+  - 35 standard analytes (`analyte`, `unit`, `ref_low`, `ref_high`, `sample_type`, `category`, `clinical_note`).
+
+### 5.3 Output Schemas
+
+#### `InterpretedLabFinding`
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `analyte` | `string` | Analyte name (e.g., "Serum Creatinine") |
+| `value` | `float \| string` | Reported numeric or qualitative value |
+| `unit` | `string` | Unit of measurement |
+| `ref_low` | `float \| null` | Lower reference bound |
+| `ref_high` | `float \| null` | Upper reference bound |
+| `ref_source` | `ReferenceRangeSource` | `"REPORT"`, `"FALLBACK"`, or `"NONE"` |
+| `status` | `FindingStatus` | `"below"`, `"within"`, `"above"`, `"unknown"` |
+| `deviation_score` | `float \| null` | Normalized deviation magnitude from range |
+| `rank` | `integer` | 1-based ranking position (abnormal findings first by deviation) |
+| `context_diagnoses` | `list[string]` | Active relevant patient diagnoses |
+| `context_medications`| `list[string]` | Active relevant patient medications |
+| `context_notes` | `list[string]` | Deterministic clinical advisory notes |
+| `explanation` | `string` | Patient-readable plain language explanation |
+| `provenance` | `ProvenanceEnvelope[Any]` | Intact provenance inherited from underlying `LabResult` |
+| `confidence` | `float \| null` | Extraction confidence score |
+| `review_status` | `string` | `"confirmed"` or `"needs_review"` (uncertainty preserved) |
+
+#### `LabInterpretationReport`
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `patient_id` | `string` | Canonical patient ID |
+| `total_findings` | `integer` | Total number of findings analyzed |
+| `abnormal_count` | `integer` | Count of findings outside reference bounds |
+| `top_findings` | `list[InterpretedLabFinding]` | Top 3 findings ranked by deviation score |
+| `all_findings` | `list[InterpretedLabFinding]` | All findings sorted deterministically |
+| `cross_module_alerts`| `list[string]` | High-priority cross-module clinical alerts |
+| `generated_at` | `string` | ISO 8601 UTC timestamp |
+

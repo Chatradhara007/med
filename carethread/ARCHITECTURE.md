@@ -122,4 +122,51 @@ DynamoDB Single-Table Persistence (PK = PATIENT#<id>, SK = PLAN#<day_index>#<slo
 - LLMs are mechanically prevented from inventing escalation thresholds or altering drug doses.
 - Every `PlanEntry` inherits and preserves the verified provenance citation from the source clinical entity.
 
+---
+
+## 6. M3 — Lab Interpreter Architecture
+
+```text
+Canonical Patient Record
+        ↓
+LabResult[]
+        ↓
+Reference Range Resolution
+        ↓
+Deterministic Deviation
+        ↓
+Finding Ranking
+        ↓
+Diagnosis/Medication Context
+        ↓
+Structured Interpretation
+        ↓
+Optional LLM Formatting
+```
+
+### 6.1 Reference-Range Precedence & Fallback Invariant
+1. **Report Printed Range Takes Absolute Precedence:** If the laboratory report contains a usable printed range (`ref_low` and/or `ref_high`), it is strictly preserved as `ref_source = "REPORT"`. Generic or fallback database ranges are never substituted.
+2. **Curated Fallback Dataset (`data/ref_ranges.csv`):** Queried ONLY when the uploaded laboratory report does not provide a usable reference interval. Returns `ref_source = "FALLBACK"`.
+3. **Zero Range Invention:** If an analyte is not present in the report or the fallback repository, the missing reference interval is represented explicitly (`ref_source = "NONE"`, `status = "unknown"`). The system never hallucinates reference bounds.
+
+### 6.2 Deterministic Deviation & Reproducible Ranking
+- **Mathematical Formulation:**
+  - Interval span: $span = ref\_high - ref\_low$
+  - If $value > ref\_high$: status is `above`, deviation score $= \text{round}((value - ref\_high) / span, 2)$
+  - If $value < ref\_low$: status is `below`, deviation score $= \text{round}((ref\_low - value) / span, 2)$
+  - If $ref\_low \le value \le ref\_high$: status is `within`, deviation score $= 0.0$ (including exact boundaries)
+- **Abnormal-First Ranking:** Abnormal findings are ordered strictly in descending order of deviation score, with deterministic alphabetical tie-breaking. Normal findings follow alphabetically. Top 3 findings are partitioned for prominent card presentation in the UI.
+
+### 6.3 Cross-Reading Clinical Context (Diagnoses & Medications)
+- **Metformin + Elevated Creatinine / BUN:** When renal parameters are elevated (`status = above`) in a patient actively prescribed Metformin, a cross-module alert is generated flagging reduced drug clearance and lactic acidosis advisory risk.
+- **Potassium + RAAS Inhibitors:** Abnormal potassium levels trigger contextual electrolyte monitoring notes for patients on ACE inhibitors, ARBs, or potassium-sparing diuretics.
+- **Diabetes & Cardiac History:** Glycemic and cardiac biomarkers are contextualized against documented diagnoses without creating new diagnoses.
+- **Safety Boundary:** The module never creates new diagnoses, never prescribes, and never alters medications.
+
+### 6.4 Provenance & Uncertainty Preservation
+- Every interpreted finding retains the complete provenance citation (`doc_id`, `page`, `bbox`, `verbatim`, `confidence`) of the underlying `LabResult`.
+- Items marked `needs_review` (or confidence $< 0.85$) preserve their uncertainty and are never promoted to `confirmed`.
+- LLMs are restricted strictly to patient-friendly wording and are mechanically prevented via `verify_lab_explanation_safety` from altering values, bounds, or status directions.
+
+
 
