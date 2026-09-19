@@ -265,7 +265,7 @@ All endpoints are authenticated via Amazon Cognito JWT Authorizer. `patient_id` 
 | **M1 (Ingest Pipeline)** | S3 object, `Document` | `ExtractionResult`, `Medication`, `LabResult`, `Diagnosis`, `ProvenanceEnvelope` | **NOT IMPLEMENTED YET** |
 | **M2 (Care Plan)** | `Medication`, `Diagnosis`, `rules.yaml`, `DischargeRestriction`, `DischargeFollowup` | `PlanEntry`, `FiredAlert` | **IMPLEMENTED (PASS)** |
 | **M3 (Lab Interpreter)** | `LabResult`, `Medication`, `Diagnosis`, `ref_ranges.csv` | `InterpretedLabFinding`, `LabInterpretationReport` | **IMPLEMENTED (PASS)** |
-| **M4 (Substitution Check)** | `MedicineStripExtraction`, `drugs.csv`, `nti.csv`, active `Medication` | `SubstitutionResponse` (with NTI block guardrail) | **NOT IMPLEMENTED YET** |
+| **M4 (Substitution Check)** | `MedicineStripExtraction`, `drugs.csv`, `nti.csv`, active `Medication` | `SubstitutionAnalysisResult`, `SubstitutionResponse` | **IMPLEMENTED (PASS)** |
 | **M5 (Reminders)** | `PlanEntry`, `Patient` | SNS push notification payload | **NOT IMPLEMENTED YET** |
 | **M6 (APIs)** | API Requests | API Responses (`PatientRecordResponse`, etc.) | **PARTIAL** (`POST /documents`, `GET /documents/{id}` PASS) |
 | **M7 (Cross-Module)** | `Medication`, `LabResult`, `Diagnosis` | Cross-module `FiredAlert` (e.g. Metformin + Creatinine) | **NOT IMPLEMENTED YET** |
@@ -322,4 +322,68 @@ def interpret_patient_labs(patient_id: str) -> LabInterpretationReport:
 | `all_findings` | `list[InterpretedLabFinding]` | All findings sorted deterministically |
 | `cross_module_alerts`| `list[string]` | High-priority cross-module clinical alerts |
 | `generated_at` | `string` | ISO 8601 UTC timestamp |
+
+---
+
+## 6. M4 — Medicine Substitution Contracts
+
+### 6.1 Service Interface
+```python
+def check_substitution(
+    patient_id: Optional[str] = None,
+    doc_id: Optional[str] = None,
+    brand: Optional[str] = None,
+    salt: Optional[str] = None,
+    strength: Optional[str] = None,
+    form: Optional[str] = None,
+) -> SubstitutionAnalysisResult:
+    """Evaluates substitution feasibility, NTI restrictions, and active medication interaction risks."""
+    ...
+```
+
+### 6.2 Input Schemas
+- **From Medicine Image Scan:** `doc_id` referencing a verified `MedicineStripExtraction` carrying mandatory provenance citations.
+- **From Direct Clinical Query:** `brand`, `salt`, `strength`, `form`.
+- **From Patient Canonical Record:** Active `Medication[]` retrieved via `get_patient_context(patient_id)`.
+- **From Reference Formularies:** `data/drugs.csv` (200+ drugs) and `data/nti.csv` (10 NTI hard-block rules).
+
+### 6.3 State Lifecycle (`SubstitutionResultState`)
+- `SUBSTITUTION_AVAILABLE`: Non-NTI bioequivalent salt-matched alternatives identified.
+- `SUBSTITUTION_BLOCKED_NTI`: Medicine is on Narrow Therapeutic Index list; substitution strictly prohibited.
+- `NO_MATCH`: No salt-equivalent formulations exist in curated catalog; zero substitutes invented.
+- `NEEDS_REVIEW`: Blister pack extraction confidence is $< 0.85$, requiring patient/clinician verification.
+
+### 6.4 Output Schemas
+
+#### `CandidateAlternative`
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `brand` | `string` | Alternative trade brand name |
+| `salt` | `string` | Active pharmaceutical ingredient (exact match) |
+| `strength` | `string` | Formulation strength (e.g. "500mg") |
+| `strength_mg` | `float` | Numeric strength in mg |
+| `form` | `string` | Dosage form ("tablet", "capsule") |
+| `manufacturer` | `string \| null` | Packaging pharmaceutical company |
+| `price_inr` | `float \| null` | Approximate retail price in INR |
+| `nti` | `boolean` | Narrow Therapeutic Index flag |
+| `common_interactions`| `list[string]` | Curated formulary interaction risks |
+| `strength_matches`| `boolean` | True if numeric strength matches query drug |
+| `form_matches` | `boolean` | True if dosage form matches query drug |
+| `divergence_notes`| `list[string]` | Explicit warnings for strength or form differences |
+
+#### `SubstitutionAnalysisResult`
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `state` | `SubstitutionResultState` | Primary classification state |
+| `blocked` | `boolean` | True if substitution prohibited (NTI) |
+| `title` | `string \| null` | Headline summary |
+| `message` | `string \| null` | Plain language explanation |
+| `clinical_rationale` | `string \| null` | Pharmacological rationale (enforced for NTI blocks) |
+| `detected_medicine` | `DetectedMedicine \| null`| Extracted source formulation with provenance |
+| `alternatives` | `list[CandidateAlternative]`| Salt-equivalent candidate formulations |
+| `interactions` | `list[InteractionAdvisory]` | Advisory warnings cross-checked against active meds |
+| `interaction_check_status` | `string` | `"available"` or `"unavailable"` |
+| `review_status` | `string` | `"confirmed"` or `"needs_review"` (uncertainty preserved) |
+| `provenance` | `ProvenanceEnvelope \| null`| Source blister pack citation |
+
 

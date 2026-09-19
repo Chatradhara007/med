@@ -8,19 +8,22 @@
 | **Prompt 4** | Document Upload Foundation (`POST /documents`) | **PASS** | 13/13 Tests Passed | Presigned S3 PUT URL (300s expiry), `raw/<patient_id>/<doc_id>.<ext>` S3 layout, Document record (`uploading`), JWT `sub` authentication, body spoofing prevention. |
 | **M2** | Care Plan & Deterministic Escalations | **PASS** | 10/10 Tests Passed | 7-day multi-slot care plan (`PlanEntry`), frequency mapping, provenance inheritance, rules.yaml engine, safety dose validator, idempotency. |
 | **M3** | Lab Interpreter | **PASS** | 17/17 Tests Passed | Printed report range precedence, fallback CSV repository, deterministic deviation, abnormal-first ranking, Metformin/Creatinine context cross-reading, LLM safety guardrails. |
+| **M4** | Substitution Check | **PASS** | 14/14 Tests Passed | Salt-equivalent matching from `drugs.csv`, NTI hard-block (`nti.csv`), strength/form divergence flags, canonical active medication cross-check, advisory warnings. |
 | **M1** | Ingest Pipeline & Orchestration | **NOT STARTED** | - | Awaiting Step Functions, rasterisation, Bedrock multimodal extraction, and bbox matching. |
-| **M4** | Substitution Check | **NOT STARTED** | - | Scheduled for M4. |
 | **M5** | Reminders | **NOT STARTED** | - | Scheduled for M5. |
 | **M6** | Core API Handlers & End-to-End Verification | **PARTIAL** | 13/13 Tests Passed | `POST /documents`, `GET /documents/{id}` PASS. Remaining endpoints pending. |
 
 ---
 
 ### Test Execution Summary (Current)
-- **Total Test Suite:** `carethread/tests/` (95 tests)
-- **Results:** **95 passed, 0 failed, 0 errors**
-- **Execution Time:** ~0.38 seconds
+- **Total Test Suite:** `carethread/tests/` (109 tests)
+- **Results:** **109 passed, 0 failed, 0 errors**
+- **Execution Time:** ~0.45 seconds
 - **Dependencies (Real vs Mocked):**
+  - `Curated Drug Index`: **REAL DATA** (`data/drugs.csv` with 200+ vetted bioequivalent formulations)
+  - `NTI Database`: **REAL DATA** (`data/nti.csv` with 10 clinical hard-block rules)
   - `Reference Range Source`: **REAL DATA** (`data/ref_ranges.csv` with 35 biological reference intervals)
+  - `Medicine OCR / Extraction`: **MOCKED** (`MockMedicineExtractionAdapter` with confidence gating)
   - `LLM Formatter`: **MOCKED** (`MockLabExplanationFormatter` and `MockLLMFormatter` with clinical safety verification)
   - `DynamoDB Table`: **LOCAL / MOCKED** (Tested with `InMemoryPatientRepository` and `MockDynamoDBTable`)
   - `S3 Storage`: **LOCAL / MOCKED** (Tested with `InMemoryStorageService` and `MockBoto3S3Client`)

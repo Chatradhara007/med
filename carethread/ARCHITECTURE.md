@@ -168,5 +168,53 @@ Optional LLM Formatting
 - Items marked `needs_review` (or confidence $< 0.85$) preserve their uncertainty and are never promoted to `confirmed`.
 - LLMs are restricted strictly to patient-friendly wording and are mechanically prevented via `verify_lab_explanation_safety` from altering values, bounds, or status directions.
 
+---
+
+## 7. M4 — Medicine Substitution Architecture
+
+```text
+Medicine Image / Request
+      ↓
+Extraction Adapter (MockMedicineExtractionAdapter)
+      ↓
+Brand / Salt / Strength / Form
+      ↓
+Curated Drug Index (data/drugs.csv)
+      ↓
+Salt-equivalent Candidates
+      ↓
+NTI Hard-Block (data/nti.csv)
+      ↓
+Active Medication Cross-check (Single Partition PK = PATIENT#<id>)
+      ↓
+Interaction Flags (Advisory warnings)
+      ↓
+Structured Substitution Result (SubstitutionAnalysisResult / SubstitutionResponse)
+```
+
+### 7.1 Narrow Therapeutic Index (NTI) Hard-Block Safety Invariant
+- **Unconditional Hard-Block:** If a requested or scanned medicine appears on the Narrow Therapeutic Index (`data/nti.csv`, e.g. Warfarin, Levothyroxine, Digoxin, Phenytoin, Lithium, Carbamazepine, Theophylline, Ciclosporin, Tacrolimus):
+  - `blocked = True`
+  - `state = "SUBSTITUTION_BLOCKED_NTI"`
+  - Zero alternatives are returned.
+  - The clinical pharmacology rationale is returned directly from `data/nti.csv`.
+  - Consultation with the treating specialist is mandated.
+
+### 7.2 Salt-Equivalence & Divergence Screening
+- **Chemical Salt Equivalence:** Candidates must share the exact active chemical salt (e.g. Metformin Hydrochloride matches Metformin Hydrochloride). Different active ingredients are rejected.
+- **Formulation Strength Divergence:** Differences in dosage strength (e.g. 500mg vs 850mg or 1000mg) are explicitly flagged on candidate items (`strength_matches = False`, `divergence_notes`).
+- **Dosage Form Divergence:** Differences in physical formulation (e.g. tablet vs capsule) are explicitly flagged (`form_matches = False`).
+- **Zero Autonomous Modifications:** The service never alters, cancels, or prescribes medications autonomously.
+
+### 7.3 Active Medication Cross-Checking
+- Active prescriptions are retrieved exclusively from the canonical single-table record via `get_patient_context(patient_id)`.
+- Candidate formulations and scanned drugs are screened against active medications for documented pharmacopeia drug-drug interactions (e.g. Aspirin with Warfarin, Clopidogrel with Omeprazole).
+- Missing interaction profiles are explicitly represented (`interaction_check_status = "unavailable"`) rather than falsely asserting "safe" or "no interactions".
+
+### 7.4 Provenance & Confidence Gating
+- Extractions from blister pack scans retain unbroken provenance citations (`doc_id`, `page`, `bbox`, `verbatim`, `confidence`).
+- Scans with extraction confidence $< 0.85$ are gated into `NEEDS_REVIEW` state, preventing unverified medicine substitutions.
+
+
 
 
