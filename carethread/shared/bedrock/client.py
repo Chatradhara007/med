@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, Dict, List, Optional, Sequence
 
 logger = logging.getLogger(__name__)
@@ -292,27 +293,54 @@ class GroqClient(BedrockClientInterface):
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
 
-        req = urllib.request.Request(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-                "User-Agent": "CareThread/1.0",
-            },
-            data=json.dumps(payload).encode("utf-8"),
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=45) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                choices = data.get("choices") or []
-                if not choices:
-                    raise BedrockInvocationError("Groq response contained no choices")
-                content = choices[0].get("message", {}).get("content", "")
-                if not content.strip():
-                    raise BedrockInvocationError("Groq response contained empty content")
-                return content
-        except Exception as exc:
-            raise BedrockInvocationError(f"Groq API call failed: {exc}") from exc
+        max_retries = 5
+        for attempt in range(max_retries):
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "CareThread/1.0",
+                },
+                data=json.dumps(payload).encode("utf-8"),
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=45) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    choices = data.get("choices") or []
+                    if not choices:
+                        raise BedrockInvocationError("Groq response contained no choices")
+                    content = choices[0].get("message", {}).get("content", "")
+                    if not content.strip():
+                        raise BedrockInvocationError("Groq response contained empty content")
+                    return content
+            except urllib.error.HTTPError as exc:
+                if exc.code == 429 and attempt < max_retries - 1:
+                    wait_sec = 2.0 * (attempt + 1)
+                    retry_after = exc.headers.get("retry-after")
+                    reset_tokens = exc.headers.get("x-ratelimit-reset-tokens")
+                    if retry_after:
+                        try:
+                            wait_sec = max(float(retry_after), wait_sec)
+                        except (ValueError, TypeError):
+                            pass
+                    elif reset_tokens:
+                        try:
+                            clean_str = reset_tokens.rstrip("s")
+                            wait_sec = max(float(clean_str) + 0.5, wait_sec)
+                        except (ValueError, TypeError):
+                            pass
+                    logger.warning(
+                        "Groq rate limited (429). Retrying in %.2fs (attempt %d/%d)...",
+                        wait_sec,
+                        attempt + 1,
+                        max_retries,
+                    )
+                    time.sleep(wait_sec)
+                    continue
+                raise BedrockInvocationError(f"Groq API call failed: {exc}") from exc
+            except Exception as exc:
+                raise BedrockInvocationError(f"Groq API call failed: {exc}") from exc
 
     def invoke_json(
         self,
