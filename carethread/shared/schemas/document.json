@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Document",
+  "description": "Document metadata stored under PK = PATIENT#<id>, SK = DOC#<iso_ts>#<doc_id>",
+  "type": "object",
+  "required": ["patient_id", "doc_id", "type", "s3_key", "status", "created_at", "updated_at"],
+  "properties": {
+    "patient_id": { "type": "string", "minLength": 1 },
+    "doc_id": { "type": "string", "minLength": 1 },
+    "type": {
+      "type": "string",
+      "enum": ["discharge_summary", "lab_report", "medicine_strip", "prescription", "unknown"]
+    },
+    "s3_key": { "type": "string", "minLength": 1 },
+    "status": {
+      "type": "string",
+      "enum": [
+        "uploading",
+        "uploaded",
+        "rasterising",
+        "classifying",
+        "extracting",
+        "validating",
+        "review_required",
+        "ready",
+        "unsupported",
+        "failed"
+      ]
+    },
+    "pages": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    },
+    "created_at": { "type": "string", "minLength": 1 },
+    "updated_at": { "type": "string", "minLength": 1 },
+    "error_reason": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,20 @@
+/* Timeline-specific styles aligned with CareThread design tokens */
+
+.timeline-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.timeline-day {
+  margin-bottom: 20px;
+}
+
+.care-plan-card.completed {
+  opacity: 0.85;
+}
+
+.care-plan-card.completed h4 {
+  text-decoration: line-through;
+  color: var(--ct-text-muted);
+}

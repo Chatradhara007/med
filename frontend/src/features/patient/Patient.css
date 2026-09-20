@@ -1,0 +1,122 @@
+/* Patient Profile & Demographics Styling */
+
+.patient-info-card {
+  background: linear-gradient(145deg, var(--ct-surface) 0%, #1e293b 100%) !important;
+  border: 1px solid var(--ct-border) !important;
+  border-radius: var(--ct-radius-lg) !important;
+  padding: 24px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 24px !important;
+  text-align: left !important;
+}
+
+.avatar-placeholder {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, var(--ct-primary) 0%, #38bdf8 100%);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px var(--ct-primary-glow);
+}
+
+.patient-details {
+  flex: 1;
+}
+
+.patient-details h2 {
+  margin: 0 0 12px 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--ct-text-primary);
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-item label {
+  font-size: 11px;
+  color: var(--ct-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.meta-item span {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ct-text-primary);
+}
+
+/* Medication List inside Profile */
+.med-list-card, .records-summary-card, .preferences-card {
+  background-color: var(--ct-surface);
+  border: 1px solid var(--ct-border);
+  border-radius: var(--ct-radius-lg);
+  padding: 20px;
+}
+
+.med-list-card h3, .records-summary-card h3, .preferences-card h3 {
+  margin: 0 0 16px 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ct-text-primary);
+}
+
+.med-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.med-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background-color: var(--ct-surface-elevated);
+  border: 1px solid var(--ct-border-subtle);
+  border-radius: var(--ct-radius-md);
+}
+
+.med-icon {
+  font-size: 20px;
+}
+
+.med-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.med-info strong {
+  font-size: 13.5px;
+  color: var(--ct-text-primary);
+}
+
+.med-info span {
+  font-size: 12px;
+  color: var(--ct-text-secondary);
+}
+
+.med-info small {
+  font-size: 11px;
+  color: var(--ct-text-muted);
+}

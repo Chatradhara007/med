@@ -1,0 +1,201 @@
+brand,salt,strength_mg,form,nti,common_interactions,manufacturer,approx_mrp_inr
+Glycomet 500,metformin hydrochloride,500,tablet,False,contrast media; alcohol,USV,22.5
+Obimet 500,metformin hydrochloride,500,tablet,False,contrast media; alcohol,Abbott,19.8
+Cetapin 500,metformin hydrochloride,500,tablet,False,contrast media; alcohol,Sanofi,25.0
+Formin 500,metformin hydrochloride,500,tablet,False,contrast media; alcohol,Alkem,18.2
+Metsmall 500,metformin hydrochloride,500,tablet,False,contrast media; alcohol,Dr Reddys,21.0
+Glycomet 850,metformin hydrochloride,850,tablet,False,contrast media; alcohol,USV,34.0
+Obimet 850,metformin hydrochloride,850,tablet,False,contrast media; alcohol,Abbott,31.5
+Cetapin 850,metformin hydrochloride,850,tablet,False,contrast media; alcohol,Sanofi,36.0
+Glycomet 1000 SR,metformin hydrochloride,1000,tablet,False,contrast media; alcohol,USV,48.0
+Obimet 1000 SR,metformin hydrochloride,1000,tablet,False,contrast media; alcohol,Abbott,45.0
+Glucophage XR 1000,metformin hydrochloride,1000,tablet,False,contrast media; alcohol,Merck,62.0
+Cardace 2.5,ramipril,2.5,tablet,False,potassium supplements; spironolactone; nsaids,Sanofi,55.0
+Hopace 2.5,ramipril,2.5,tablet,False,potassium supplements; spironolactone; nsaids,Micro Labs,42.0
+Ramistar 2.5,ramipril,2.5,tablet,False,potassium supplements; spironolactone; nsaids,Lupin,46.0
+Ramipres 2.5,ramipril,2.5,tablet,False,potassium supplements; spironolactone; nsaids,Cipla,44.0
+Cardace 5,ramipril,5,tablet,False,potassium supplements; spironolactone; nsaids,Sanofi,88.0
+Hopace 5,ramipril,5,tablet,False,potassium supplements; spironolactone; nsaids,Micro Labs,68.0
+Ramistar 5,ramipril,5,tablet,False,potassium supplements; spironolactone; nsaids,Lupin,72.0
+Ramipres 5,ramipril,5,tablet,False,potassium supplements; spironolactone; nsaids,Cipla,70.0
+Telma 40,telmisartan,40,tablet,False,potassium supplements; aliskiren; lithium,Glenmark,92.0
+Telmikind 40,telmisartan,40,tablet,False,potassium supplements; aliskiren; lithium,Mankind,45.0
+Telpres 40,telmisartan,40,tablet,False,potassium supplements; aliskiren; lithium,Abbott,85.0
+Telsartan 40,telmisartan,40,tablet,False,potassium supplements; aliskiren; lithium,Dr Reddys,78.0
+Cresar 40,telmisartan,40,tablet,False,potassium supplements; aliskiren; lithium,Cipla,80.0
+Telma 80,telmisartan,80,tablet,False,potassium supplements; aliskiren; lithium,Glenmark,165.0
+Telmikind 80,telmisartan,80,tablet,False,potassium supplements; aliskiren; lithium,Mankind,85.0
+Telpres 80,telmisartan,80,tablet,False,potassium supplements; aliskiren; lithium,Abbott,150.0
+Amlong 5,amlodipine,5,tablet,False,simvastatin; cyclosporine; diltiazem,Micro Labs,32.0
+Amlopin 5,amlodipine,5,tablet,False,simvastatin; cyclosporine; diltiazem,USV,28.0
+Stamlo 5,amlodipine,5,tablet,False,simvastatin; cyclosporine; diltiazem,Dr Reddys,34.0
+Amcard 5,amlodipine,5,tablet,False,simvastatin; cyclosporine; diltiazem,Cadila,26.0
+Atorva 10,atorvastatin,10,tablet,False,clarithromycin; itraconazole; gemfibrozil,Zydus,78.0
+Storvas 10,atorvastatin,10,tablet,False,clarithromycin; itraconazole; gemfibrozil,Sun Pharma,82.0
+Lipivas 10,atorvastatin,10,tablet,False,clarithromycin; itraconazole; gemfibrozil,Cipla,75.0
+Tonact 10,atorvastatin,10,tablet,False,clarithromycin; itraconazole; gemfibrozil,Lupin,76.0
+Aztor 10,atorvastatin,10,tablet,False,clarithromycin; itraconazole; gemfibrozil,Torrent,79.0
+Atorva 20,atorvastatin,20,tablet,False,clarithromycin; itraconazole; gemfibrozil,Zydus,145.0
+Storvas 20,atorvastatin,20,tablet,False,clarithromycin; itraconazole; gemfibrozil,Sun Pharma,155.0
+Lipivas 20,atorvastatin,20,tablet,False,clarithromycin; itraconazole; gemfibrozil,Cipla,142.0
+Tonact 20,atorvastatin,20,tablet,False,clarithromycin; itraconazole; gemfibrozil,Lupin,146.0
+Atorva 40,atorvastatin,40,tablet,False,clarithromycin; itraconazole; gemfibrozil,Zydus,260.0
+Storvas 40,atorvastatin,40,tablet,False,clarithromycin; itraconazole; gemfibrozil,Sun Pharma,275.0
+Lipivas 40,atorvastatin,40,tablet,False,clarithromycin; itraconazole; gemfibrozil,Cipla,255.0
+Rozucor 10,rosuvastatin,10,tablet,False,antacids; warfarin; cyclosporine,Torrent,140.0
+Rosuvas 10,rosuvastatin,10,tablet,False,antacids; warfarin; cyclosporine,Ranbaxy / Sun,150.0
+Rozavel 10,rosuvastatin,10,tablet,False,antacids; warfarin; cyclosporine,Sun Pharma,145.0
+Turbovas 10,rosuvastatin,10,tablet,False,antacids; warfarin; cyclosporine,Micro Labs,120.0
+Rozucor 20,rosuvastatin,20,tablet,False,antacids; warfarin; cyclosporine,Torrent,245.0
+Rosuvas 20,rosuvastatin,20,tablet,False,antacids; warfarin; cyclosporine,Sun Pharma,260.0
+Rozavel 20,rosuvastatin,20,tablet,False,antacids; warfarin; cyclosporine,Sun Pharma,250.0
+Deplatt 75,clopidogrel,75,tablet,False,omeprazole; esomeprazole; anticoagulants,Torrent,98.0
+Clopilet 75,clopidogrel,75,tablet,False,omeprazole; esomeprazole; anticoagulants,Sun Pharma,105.0
+Plavix 75,clopidogrel,75,tablet,False,omeprazole; esomeprazole; anticoagulants,Sanofi,210.0
+Clopivas 75,clopidogrel,75,tablet,False,omeprazole; esomeprazole; anticoagulants,Cipla,95.0
+Ecosprin 75,aspirin,75,tablet,False,warfarin; heparin; ibuprofen; methotrexate,USV,5.5
+Loprin 75,aspirin,75,tablet,False,warfarin; heparin; ibuprofen; methotrexate,Unichem,4.8
+Delisprin 75,aspirin,75,tablet,False,warfarin; heparin; ibuprofen; methotrexate,Aristo,5.0
+Ecosprin 150,aspirin,150,tablet,False,warfarin; heparin; ibuprofen; methotrexate,USV,9.2
+Loprin 150,aspirin,150,tablet,False,warfarin; heparin; ibuprofen; methotrexate,Unichem,8.5
+Delisprin 150,aspirin,150,tablet,False,warfarin; heparin; ibuprofen; methotrexate,Aristo,8.8
+Betaloc 25,metoprolol succinate,25,tablet,False,verapamil; diltiazem; amiodarone,AstraZeneca,85.0
+Metolar XR 25,metoprolol succinate,25,tablet,False,verapamil; diltiazem; amiodarone,Cipla,52.0
+Met XL 25,metoprolol succinate,25,tablet,False,verapamil; diltiazem; amiodarone,Ajanta,55.0
+Starpress XL 25,metoprolol succinate,25,tablet,False,verapamil; diltiazem; amiodarone,Lupin,50.0
+Betaloc 50,metoprolol succinate,50,tablet,False,verapamil; diltiazem; amiodarone,AstraZeneca,145.0
+Metolar XR 50,metoprolol succinate,50,tablet,False,verapamil; diltiazem; amiodarone,Cipla,92.0
+Met XL 50,metoprolol succinate,50,tablet,False,verapamil; diltiazem; amiodarone,Ajanta,96.0
+Starpress XL 50,metoprolol succinate,50,tablet,False,verapamil; diltiazem; amiodarone,Lupin,89.0
+Pan 40,pantoprazole,40,tablet,False,ketoconazole; methotrexate,Alkem,115.0
+Pantocid 40,pantoprazole,40,tablet,False,ketoconazole; methotrexate,Sun Pharma,125.0
+Pantodac 40,pantoprazole,40,tablet,False,ketoconazole; methotrexate,Zydus,110.0
+Pantosec 40,pantoprazole,40,tablet,False,ketoconazole; methotrexate,Cipla,118.0
+Penta 40,pantoprazole,40,tablet,False,ketoconazole; methotrexate,Torrent,98.0
+Razo 20,rabeprazole,20,tablet,False,atazanavir; iron salts,Dr Reddys,140.0
+Happi 20,rabeprazole,20,tablet,False,atazanavir; iron salts,Zydus,120.0
+Rablet 20,rabeprazole,20,tablet,False,atazanavir; iron salts,Lupin,135.0
+Rabicip 20,rabeprazole,20,tablet,False,atazanavir; iron salts,Cipla,125.0
+Forxiga 10,dapagliflozin,10,tablet,False,loop diuretics; insulin,AstraZeneca,650.0
+Dapavel 10,dapagliflozin,10,tablet,False,loop diuretics; insulin,Sun Pharma,160.0
+Oxra 10,dapagliflozin,10,tablet,False,loop diuretics; insulin,Sun Pharma,170.0
+Dapanorm 10,dapagliflozin,10,tablet,False,loop diuretics; insulin,Alkem,145.0
+Tenelimac 20,teneligliptin,20,tablet,False,sulfonylureas; insulin,Macleods,95.0
+Tenglyn 20,teneligliptin,20,tablet,False,sulfonylureas; insulin,Zydus,110.0
+Ziten 20,teneligliptin,20,tablet,False,sulfonylureas; insulin,Glenmark,120.0
+Dynaglipt 20,teneligliptin,20,tablet,False,sulfonylureas; insulin,Mankind,85.0
+Dolo 650,paracetamol,650,tablet,False,alcohol; warfarin,Micro Labs,30.5
+Calpol 650,paracetamol,650,tablet,False,alcohol; warfarin,GSK,31.0
+P-650,paracetamol,650,tablet,False,alcohol; warfarin,Apex,28.0
+Pacimol 650,paracetamol,650,tablet,False,alcohol; warfarin,Ipca,27.5
+Augmentin 625 Duo,amoxicillin clavulanate,625,tablet,False,methotrexate; allopurinol; oral contraceptives,GSK,205.0
+Moxikind-CV 625,amoxicillin clavulanate,625,tablet,False,methotrexate; allopurinol; oral contraceptives,Mankind,135.0
+Clavam 625,amoxicillin clavulanate,625,tablet,False,methotrexate; allopurinol; oral contraceptives,Alkem,185.0
+Advent 625,amoxicillin clavulanate,625,tablet,False,methotrexate; allopurinol; oral contraceptives,Cipla,170.0
+Azee 500,azithromycin,500,tablet,False,antacids; ergotamine; digoxin,Cipla,120.0
+Azithral 500,azithromycin,500,tablet,False,antacids; ergotamine; digoxin,Alembic,125.0
+Zithrox 500,azithromycin,500,tablet,False,antacids; ergotamine; digoxin,Macleods,110.0
+Azifast 500,azithromycin,500,tablet,False,antacids; ergotamine; digoxin,Ipca,115.0
+Zifi 200,cefixime,200,tablet,False,carbamazepine; warfarin,FDC,110.0
+Taxim-O 200,cefixime,200,tablet,False,carbamazepine; warfarin,Alkem,115.0
+Mahacef 200,cefixime,200,tablet,False,carbamazepine; warfarin,Mankind,95.0
+Cefolac 200,cefixime,200,tablet,False,carbamazepine; warfarin,Macleods,105.0
+Warf 1,warfarin,1,tablet,True,aspirin; nsaids; amiodarone; fluconazole,Cipla,45.0
+Warf 2,warfarin,2,tablet,True,aspirin; nsaids; amiodarone; fluconazole,Cipla,55.0
+Warf 5,warfarin,5,tablet,True,aspirin; nsaids; amiodarone; fluconazole,Cipla,72.0
+Coumadin 5,warfarin,5,tablet,True,aspirin; nsaids; amiodarone; fluconazole,Abbott,95.0
+Uniwarfin 5,warfarin,5,tablet,True,aspirin; nsaids; amiodarone; fluconazole,Unichem,60.0
+Thyronorm 25mcg,levothyroxine,0.025,tablet,True,calcium; iron supplements; antacids,Abbott,125.0
+Thyronorm 50mcg,levothyroxine,0.05,tablet,True,calcium; iron supplements; antacids,Abbott,145.0
+Thyronorm 75mcg,levothyroxine,0.075,tablet,True,calcium; iron supplements; antacids,Abbott,155.0
+Thyronorm 100mcg,levothyroxine,0.1,tablet,True,calcium; iron supplements; antacids,Abbott,165.0
+Eltroxin 50mcg,levothyroxine,0.05,tablet,True,calcium; iron supplements; antacids,GSK,140.0
+Eltroxin 100mcg,levothyroxine,0.1,tablet,True,calcium; iron supplements; antacids,GSK,160.0
+Eptoin 100,phenytoin,100,tablet,True,valproate; carbamazepine; amiodarone,Abbott,170.0
+Dilantin 100,phenytoin,100,capsule,True,valproate; carbamazepine; amiodarone,Pfizer,220.0
+Eptoin 50,phenytoin,50,tablet,True,valproate; carbamazepine; amiodarone,Abbott,110.0
+Lanoxin 0.25mg,digoxin,0.25,tablet,True,amiodarone; verapamil; quinidine; macrolides,GlaxoSmithKline,18.0
+Digoxin 0.25mg,digoxin,0.25,tablet,True,amiodarone; verapamil; quinidine; macrolides,Samarth Life Sciences,15.0
+Lithosun 300,lithium,300,tablet,True,ace inhibitors; nsaids; thiazide diuretics,Sun Pharma,65.0
+Licab 300,lithium,300,tablet,True,ace inhibitors; nsaids; thiazide diuretics,Torrent,62.0
+Lithosun SR 400,lithium,400,tablet,True,ace inhibitors; nsaids; thiazide diuretics,Sun Pharma,85.0
+Tegretol 100,carbamazepine,100,tablet,True,clarithromycin; erythromycin; diltiazem,Novartis,22.0
+Tegretol 200,carbamazepine,200,tablet,True,clarithromycin; erythromycin; diltiazem,Novartis,38.0
+Tegretol CR 200,carbamazepine,200,tablet,True,clarithromycin; erythromycin; diltiazem,Novartis,65.0
+Mazetol 200,carbamazepine,200,tablet,True,clarithromycin; erythromycin; diltiazem,Abbott,35.0
+Deriphyllin 150,theophylline,150,tablet,True,ciprofloxacin; fluvoxamine; cimetidine,Zydus,32.0
+Deriphyllin 300,theophylline,300,tablet,True,ciprofloxacin; fluvoxamine; cimetidine,Zydus,58.0
+Theo-Asthalin,theophylline,100,tablet,True,ciprofloxacin; fluvoxamine; cimetidine,Cipla,24.0
+Losar 25,losartan,25,tablet,False,potassium supplements; lithium; aliskiren,Unichem,48.0
+Repace 25,losartan,25,tablet,False,potassium supplements; lithium; aliskiren,Sun Pharma,52.0
+Covance 25,losartan,25,tablet,False,potassium supplements; lithium; aliskiren,Ranbaxy,45.0
+Losar 50,losartan,50,tablet,False,potassium supplements; lithium; aliskiren,Unichem,88.0
+Repace 50,losartan,50,tablet,False,potassium supplements; lithium; aliskiren,Sun Pharma,92.0
+Covance 50,losartan,50,tablet,False,potassium supplements; lithium; aliskiren,Ranbaxy,84.0
+Zaart 50,losartan,50,tablet,False,potassium supplements; lithium; aliskiren,Cipla,80.0
+Amaryl 1,glimepiride,1,tablet,False,beta blockers; miconazole; fluconazole,Sanofi,95.0
+Glimestar 1,glimepiride,1,tablet,False,beta blockers; miconazole; fluconazole,Mankind,42.0
+Gemer 1,glimepiride,1,tablet,False,beta blockers; miconazole; fluconazole,Sun Pharma,48.0
+Zoryl 1,glimepiride,1,tablet,False,beta blockers; miconazole; fluconazole,Intas,50.0
+Amaryl 2,glimepiride,2,tablet,False,beta blockers; miconazole; fluconazole,Sanofi,155.0
+Glimestar 2,glimepiride,2,tablet,False,beta blockers; miconazole; fluconazole,Mankind,65.0
+Gemer 2,glimepiride,2,tablet,False,beta blockers; miconazole; fluconazole,Sun Pharma,72.0
+Zoryl 2,glimepiride,2,tablet,False,beta blockers; miconazole; fluconazole,Intas,75.0
+Levocet 5,levocetirizine,5,tablet,False,alcohol; cns depressants,Hetero,45.0
+1-AL 5,levocetirizine,5,tablet,False,alcohol; cns depressants,FDC,50.0
+Vozet 5,levocetirizine,5,tablet,False,alcohol; cns depressants,Enhanced,42.0
+Teczine 5,levocetirizine,5,tablet,False,alcohol; cns depressants,Sun Pharma,65.0
+Xyzal 5,levocetirizine,5,tablet,False,alcohol; cns depressants,Dr Reddys,70.0
+Montair 10,montelukast,10,tablet,False,phenytoin; phenobarbital; rifampicin,Cipla,160.0
+Montek 10,montelukast,10,tablet,False,phenytoin; phenobarbital; rifampicin,Sun Pharma,150.0
+Romilast 10,montelukast,10,tablet,False,phenytoin; phenobarbital; rifampicin,Ranbaxy,145.0
+Telekast 10,montelukast,10,tablet,False,phenytoin; phenobarbital; rifampicin,Lupin,155.0
+Januvia 50,sitagliptin,50,tablet,False,digoxin; insulin,MSD,520.0
+Zita 50,sitagliptin,50,tablet,False,digoxin; insulin,Glenmark,140.0
+Istavel 50,sitagliptin,50,tablet,False,digoxin; insulin,Sun Pharma,150.0
+Januvia 100,sitagliptin,100,tablet,False,digoxin; insulin,MSD,890.0
+Zita 100,sitagliptin,100,tablet,False,digoxin; insulin,Glenmark,240.0
+Istavel 100,sitagliptin,100,tablet,False,digoxin; insulin,Sun Pharma,255.0
+Galvus 50,vildagliptin,50,tablet,False,ace inhibitors; thiazide diuretics,Novartis,410.0
+Jalra 50,vildagliptin,50,tablet,False,ace inhibitors; thiazide diuretics,USV,180.0
+Vildamac 50,vildagliptin,50,tablet,False,ace inhibitors; thiazide diuretics,Macleods,135.0
+Zomelis 50,vildagliptin,50,tablet,False,ace inhibitors; thiazide diuretics,Abbott,160.0
+Aldactone 25,spironolactone,25,tablet,False,potassium supplements; ace inhibitors; nsaids,RPG,58.0
+Spiroctan 25,spironolactone,25,tablet,False,potassium supplements; ace inhibitors; nsaids,RPG,50.0
+Aldactone 50,spironolactone,50,tablet,False,potassium supplements; ace inhibitors; nsaids,RPG,98.0
+Spiroctan 50,spironolactone,50,tablet,False,potassium supplements; ace inhibitors; nsaids,RPG,90.0
+Lasix 40,furosemide,40,tablet,False,aminoglycosides; lithium; digoxin,Sanofi,15.0
+Frusenex 40,furosemide,40,tablet,False,aminoglycosides; lithium; digoxin,RPG,12.0
+Dytor 10,torsemide,10,tablet,False,aminoglycosides; lithium; digoxin,Cipla,95.0
+Torget 10,torsemide,10,tablet,False,aminoglycosides; lithium; digoxin,Zydus,85.0
+Retor 10,torsemide,10,tablet,False,aminoglycosides; lithium; digoxin,Torrent,88.0
+Dytor 20,torsemide,20,tablet,False,aminoglycosides; lithium; digoxin,Cipla,165.0
+Torget 20,torsemide,20,tablet,False,aminoglycosides; lithium; digoxin,Zydus,150.0
+Emeset 4,ondansetron,4,tablet,False,apomorphine; tramadol; qt prolonging agents,Cipla,42.0
+Ondem 4,ondansetron,4,tablet,False,apomorphine; tramadol; qt prolonging agents,Alkem,40.0
+Zofran 4,ondansetron,4,tablet,False,apomorphine; tramadol; qt prolonging agents,GSK,65.0
+Periset 4,ondansetron,4,tablet,False,apomorphine; tramadol; qt prolonging agents,Ipca,38.0
+Emeset 8,ondansetron,8,tablet,False,apomorphine; tramadol; qt prolonging agents,Cipla,75.0
+Ondem 8,ondansetron,8,tablet,False,apomorphine; tramadol; qt prolonging agents,Alkem,72.0
+Zofran 8,ondansetron,8,tablet,False,apomorphine; tramadol; qt prolonging agents,GSK,110.0
+Tramazac 50,tramadol,50,tablet,False,ssris; maois; cns depressants,Zydus,95.0
+Ultram 50,tramadol,50,tablet,False,ssris; maois; cns depressants,Janssen,180.0
+Contramal 50,tramadol,50,tablet,False,ssris; maois; cns depressants,Abbott,120.0
+Brufen 400,ibuprofen,400,tablet,False,warfarin; aspirin; ace inhibitors; lithium,Abbott,18.5
+Ibugesic 400,ibuprofen,400,tablet,False,warfarin; aspirin; ace inhibitors; lithium,Cipla,16.0
+Flamar 400,ibuprofen,400,tablet,False,warfarin; aspirin; ace inhibitors; lithium,Indoco,17.0
+Ciplox 500,ciprofloxacin,500,tablet,False,theophylline; tizanidine; antacids; iron salts,Cipla,48.0
+Cifran 500,ciprofloxacin,500,tablet,False,theophylline; tizanidine; antacids; iron salts,Sun Pharma,52.0
+Ciprobid 500,ciprofloxacin,500,tablet,False,theophylline; tizanidine; antacids; iron salts,Zydus,45.0
+Levomac 500,levofloxacin,500,tablet,False,theophylline; antacids; nsaids; warfarin,Macleods,85.0
+Loxof 500,levofloxacin,500,tablet,False,theophylline; antacids; nsaids; warfarin,Ranbaxy,110.0
+Glevo 500,levofloxacin,500,tablet,False,theophylline; antacids; nsaids; warfarin,Glenmark,95.0
+Levoflox 500,levofloxacin,500,tablet,False,theophylline; antacids; nsaids; warfarin,Cipla,90.0
+Amlong 10,amlodipine,10,tablet,False,simvastatin; cyclosporine; diltiazem,Micro Labs,58.0
+Stamlo 10,amlodipine,10,tablet,False,simvastatin; cyclosporine; diltiazem,Dr Reddys,62.0
+Atorva 80,atorvastatin,80,tablet,False,clarithromycin; itraconazole; gemfibrozil,Zydus,410.0
+Storvas 80,atorvastatin,80,tablet,False,clarithromycin; itraconazole; gemfibrozil,Sun Pharma,430.0
+Deplatt 150,clopidogrel,150,tablet,False,omeprazole; esomeprazole; anticoagulants,Torrent,185.0
+Ecosprin AV 75,aspirin,75,capsule,False,warfarin; heparin; ibuprofen,USV,45.0
+Sandimmun 50mg,ciclosporin,50,capsule,True,statins; diltiazem; macrolides; nsaids,Novartis,480.0
+Panimun Bioral 50mg,ciclosporin,50,capsule,True,statins; diltiazem; macrolides; nsaids,Panacea Biotec,390.0

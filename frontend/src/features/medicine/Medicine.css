@@ -1,0 +1,85 @@
+/* Medicine & Substitution Styling */
+
+.camera-capture-container {
+  background-color: var(--ct-surface-elevated);
+  border: 2px dashed var(--ct-border);
+  border-radius: var(--ct-radius-lg);
+  overflow: hidden;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+}
+
+.capture-prompt {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  text-align: center;
+}
+
+.capture-icon {
+  font-size: 2.5rem;
+  margin-bottom: 14px;
+}
+
+.camera-preview-wrapper {
+  position: relative;
+  width: 100%;
+  max-height: 420px;
+  background-color: #000;
+  display: flex;
+  justify-content: center;
+}
+
+.camera-video, .preview-image {
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+}
+
+.camera-controls, .preview-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  background-color: var(--ct-surface);
+  border-top: 1px solid var(--ct-border);
+}
+
+.btn-snap {
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  padding: 10px 24px;
+  border-radius: var(--ct-radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all var(--ct-transition-fast);
+}
+
+.btn-snap:hover {
+  background: #1d4ed8;
+}
+
+.btn-file-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--ct-surface);
+  border: 1px solid var(--ct-border);
+  color: var(--ct-text-primary);
+  padding: 10px 20px;
+  border-radius: var(--ct-radius-md);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--ct-transition-fast);
+}
+
+.btn-file-select:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--ct-border-hover);
+}

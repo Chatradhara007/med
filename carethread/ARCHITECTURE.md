@@ -1,0 +1,312 @@
+# CareThread — System Architecture Specification
+
+## 1. Overview & Core Philosophy
+CareThread treats the three critical post-discharge breakdowns—incomprehensible discharge summaries, uncontextualized outpatient lab reports, and retail pharmacy counter stockouts—as **one connected episode belonging to one patient in the same week**.
+
+Instead of five disconnected tools with separate databases, CareThread is organized around **one patient-side canonical record for one episode of care**.
+
+---
+
+## 2. DynamoDB Single-Table Partition Architecture
+
+```text
+                                  PATIENT#123
+                                       │
+            ┌──────────────────────────┼──────────────────────────┐
+            ↓                          ↓                          ↓
+         PROFILE                    DOC#...                    MED#...
+      (Demographics)           (Document Status)          (Prescriptions)
+                                                                  │
+                     ┌────────────────────────────────────────────┼────────────────────────────┐
+                     ↓                                            ↓                            ↓
+                  LAB#...                                      DIAG#...                     PLAN#...
+              (Lab Analytes)                                 (Diagnoses)                (7-Day Schedule)
+                                                                                               │
+                                                                                            ALERT#...
+                                                                                         (Red Flag Rules)
+```
+
+### 2.1 Why the Single-Table Patient Partition is Used
+In emergency post-hospitalization recovery, clinicians and patients cannot afford relational database latency, distributed joins, or eventual consistency hazards across multiple microservice databases:
+
+1. **Zero Multi-Table Joins:** A single `Query(PK = PATIENT#<patient_id>)` loads the complete canonical patient context—patient demographics, document upload states, active medications, laboratory results, diagnostic history, 7-day care schedule slots, and fired clinical alerts—in a single sub-10ms network call.
+2. **Immediate Cross-Module Context:**
+   - **M2 (Care Plan):** Directly pairs `MED#` prescriptions with `DIAG#` diagnoses to construct timetable slots and evaluate static escalation triggers.
+   - **M3 (Lab Interpreter):** Cross-reads newly reported `LAB#` values against active `MED#` rows (e.g. elevated Serum Creatinine in the presence of active Metformin) without separate service calls.
+   - **M4 (Substitution Check):** Directly screens requested drug substitutions against the patient's active `MED#` prescription list for adverse interactions.
+3. **Strict Data Isolation & Security:** Partitioning on `PATIENT#<patient_id>` ensures absolute tenant and data isolation. Queries are mechanically bounded to the authenticated patient's partition derived from the verified Cognito JWT `sub` claim. Cross-patient data leakage is physically prevented at the partition level.
+
+### 2.2 Documented Key Patterns
+
+| Entity | Partition Key (`PK`) | Sort Key (`SK`) | Key Content |
+| :--- | :--- | :--- | :--- |
+| **Patient Profile** | `PATIENT#<patient_id>` | `PROFILE` | Name, age, sex, phone, language, registration date |
+| **Document Metadata** | `PATIENT#<patient_id>` | `DOC#<iso_ts>#<doc_id>` | Type, S3 key, 10-state lifecycle status, page count |
+| **Medication Item** | `PATIENT#<patient_id>` | `MED#<normalised_name>` | Salt, strength, frequency, duration, verified provenance |
+| **Lab Result** | `PATIENT#<patient_id>` | `LAB#<iso_ts>#<analyte>` | Value, unit, printed & fallback ref ranges, deviation score, provenance |
+| **Clinical Diagnosis** | `PATIENT#<patient_id>` | `DIAG#<code_or_slug>` | Diagnostic label, ICD-10 hint, active status, provenance |
+| **Care Plan Entry** | `PATIENT#<patient_id>` | `PLAN#<day_index>#<slot>` | Action, medication reference, target time, adherence done flag, provenance |
+| **Fired Alert** | `PATIENT#<patient_id>` | `ALERT#<iso_ts>` | Static rule ID, severity (`info` to `critical`), action message, timestamp |
+
+---
+
+## 3. Data Access Layer Abstraction (`carethread/shared/repository/`)
+
+Application code interacts with persistence through an abstract contract:
+
+- **`PatientRepositoryInterface`:** Defines typed domain operations (`create_patient`, `get_patient`, `create_document`, `get_document`, `create_medication`, `create_lab_result`, `create_diagnosis`, `create_plan_entry`, `update_plan_entry_done`, `create_alert`, `get_patient_context`).
+- **`DynamoDBPatientRepository`:** Production implementation interacting with DynamoDB via `boto3`. Handles recursive `Decimal` serialization, expression-safe queries, GSI1 projection (`status + PK`), and targeted non-destructive updates.
+- **`InMemoryPatientRepository`:** High-fidelity in-memory implementation enforcing identical sort-key structures, partition isolation, and provenance invariants for credential-free local unit testing and development.
+- **`MissingProvenanceError`:** Strict guardrail rejecting any attempt to persist an extracted clinical entity lacking verified provenance citations.
+
+---
+
+## 4. Document Upload Foundation & Storage Architecture (`POST /documents`)
+
+```text
+Client (Web / Mobile)
+  │
+  │ 1. POST /documents { filename, content_type } (Bearer JWT)
+  ↓
+API Gateway (HTTP API + JWT Authorizer)
+  │
+  ↓ 2. Invokes Lambda with requestContext.authorizer.jwt.claims.sub
+Documents Lambda Handler
+  │
+  ├── a. Authenticate: extract patient_id strictly from JWT 'sub' claim
+  │      (Body-supplied patient_id is explicitly ignored and rejected)
+  ├── b. Generate unique doc_id: d_<random_hex>
+  ├── c. Compute deterministic S3 key: raw/<patient_id>/<doc_id>.<ext>
+  ├── d. Create Document record: status = "uploading"
+  ├── e. Persist metadata to DynamoDB single table (PK = PATIENT#<id>, SK = DOC#<iso_ts>#<doc_id>)
+  └── f. Generate S3 presigned PUT URL (valid for 300s, server-side encryption on)
+  │
+  ↓ 3. Return 201 Created { doc_id, upload_url }
+Client
+  │
+  │ 4. Direct PUT binary payload to presigned upload_url
+  ↓
+Amazon S3 (carethread-docs)
+```
+
+### 4.1 S3 Layout & Security Standards
+- **Bucket Layout:**
+  - `raw/<patient_id>/<doc_id>.<ext>`: Original unprocessed uploaded PDFs or camera photos.
+  - `pages/<patient_id>/<doc_id>/p<N>.png`: 150 DPI rasterised page images for UI display and bounding box overlays.
+- **Access Control:** Public access is completely blocked (`BlockPublicAcls`, `BlockPublicPolicy`, `IgnorePublicAcls`, `RestrictPublicBuckets`).
+- **Encryption:** Server-Side Encryption AES-256 (`SSEAlgorithm: AES256`).
+- **Presigned Expiration:** 300 seconds strictly enforced.
+- **Tenant Isolation:** Patients only receive presigned PUT credentials for their own `raw/<patient_id>/` path.
+
+---
+
+## 5. M2 — Care Plan Architecture
+
+```text
+Canonical Patient Record (DynamoDB PK = PATIENT#<id>)
+        ↓
+Relevant Clinical Context (Active Diagnoses, Medications, Restrictions, Follow-ups)
+        ↓
+Deterministic Rules Engine (Static rules.yaml — fever, cardiac chest pain, vitals)
+        ↓
+Optional LLM Formatter (Strict plain-language translation; cannot alter dosages/rules)
+        ↓
+PlanEntry Objects (Day 0 to Day 6 across Morning, Afternoon, Evening, Night)
+        ↓
+DynamoDB Single-Table Persistence (PK = PATIENT#<id>, SK = PLAN#<day_index>#<slot>)
+```
+
+### 5.1 Deterministic Clinical Invariant
+- **The rules decide. LLMs only format and translate.**
+- Escalation rules are loaded strictly from `rules.yaml` (`fever_persistent`, `post_cardiac_chest_pain`, `hypoglycemia_acute`, `severe_shortness_of_breath`, `hypertensive_crisis`).
+- LLMs are mechanically prevented from inventing escalation thresholds or altering drug doses.
+- Every `PlanEntry` inherits and preserves the verified provenance citation from the source clinical entity.
+
+---
+
+## 6. M3 — Lab Interpreter Architecture
+
+```text
+Canonical Patient Record
+        ↓
+LabResult[]
+        ↓
+Reference Range Resolution
+        ↓
+Deterministic Deviation
+        ↓
+Finding Ranking
+        ↓
+Diagnosis/Medication Context
+        ↓
+Structured Interpretation
+        ↓
+Optional LLM Formatting
+```
+
+### 6.1 Reference-Range Precedence & Fallback Invariant
+1. **Report Printed Range Takes Absolute Precedence:** If the laboratory report contains a usable printed range (`ref_low` and/or `ref_high`), it is strictly preserved as `ref_source = "REPORT"`. Generic or fallback database ranges are never substituted.
+2. **Curated Fallback Dataset (`data/ref_ranges.csv`):** Queried ONLY when the uploaded laboratory report does not provide a usable reference interval. Returns `ref_source = "FALLBACK"`.
+3. **Zero Range Invention:** If an analyte is not present in the report or the fallback repository, the missing reference interval is represented explicitly (`ref_source = "NONE"`, `status = "unknown"`). The system never hallucinates reference bounds.
+
+### 6.2 Deterministic Deviation & Reproducible Ranking
+- **Mathematical Formulation:**
+  - Interval span: $span = ref\_high - ref\_low$
+  - If $value > ref\_high$: status is `above`, deviation score $= \text{round}((value - ref\_high) / span, 2)$
+  - If $value < ref\_low$: status is `below`, deviation score $= \text{round}((ref\_low - value) / span, 2)$
+  - If $ref\_low \le value \le ref\_high$: status is `within`, deviation score $= 0.0$ (including exact boundaries)
+- **Abnormal-First Ranking:** Abnormal findings are ordered strictly in descending order of deviation score, with deterministic alphabetical tie-breaking. Normal findings follow alphabetically. Top 3 findings are partitioned for prominent card presentation in the UI.
+
+### 6.3 Cross-Reading Clinical Context (Diagnoses & Medications)
+- **Metformin + Elevated Creatinine / BUN:** When renal parameters are elevated (`status = above`) in a patient actively prescribed Metformin, a cross-module alert is generated flagging reduced drug clearance and lactic acidosis advisory risk.
+- **Potassium + RAAS Inhibitors:** Abnormal potassium levels trigger contextual electrolyte monitoring notes for patients on ACE inhibitors, ARBs, or potassium-sparing diuretics.
+- **Diabetes & Cardiac History:** Glycemic and cardiac biomarkers are contextualized against documented diagnoses without creating new diagnoses.
+- **Safety Boundary:** The module never creates new diagnoses, never prescribes, and never alters medications.
+
+### 6.4 Provenance & Uncertainty Preservation
+- Every interpreted finding retains the complete provenance citation (`doc_id`, `page`, `bbox`, `verbatim`, `confidence`) of the underlying `LabResult`.
+- Items marked `needs_review` (or confidence $< 0.85$) preserve their uncertainty and are never promoted to `confirmed`.
+- LLMs are restricted strictly to patient-friendly wording and are mechanically prevented via `verify_lab_explanation_safety` from altering values, bounds, or status directions.
+
+---
+
+## 7. M4 — Medicine Substitution Architecture
+
+```text
+Medicine Image / Request
+      ↓
+Extraction Adapter (MockMedicineExtractionAdapter)
+      ↓
+Brand / Salt / Strength / Form
+      ↓
+Curated Drug Index (data/drugs.csv)
+      ↓
+Salt-equivalent Candidates
+      ↓
+NTI Hard-Block (data/nti.csv)
+      ↓
+Active Medication Cross-check (Single Partition PK = PATIENT#<id>)
+      ↓
+Interaction Flags (Advisory warnings)
+      ↓
+Structured Substitution Result (SubstitutionAnalysisResult / SubstitutionResponse)
+```
+
+### 7.1 Narrow Therapeutic Index (NTI) Hard-Block Safety Invariant
+- **Unconditional Hard-Block:** If a requested or scanned medicine appears on the Narrow Therapeutic Index (`data/nti.csv`, e.g. Warfarin, Levothyroxine, Digoxin, Phenytoin, Lithium, Carbamazepine, Theophylline, Ciclosporin, Tacrolimus):
+  - `blocked = True`
+  - `state = "SUBSTITUTION_BLOCKED_NTI"`
+  - Zero alternatives are returned.
+  - The clinical pharmacology rationale is returned directly from `data/nti.csv`.
+  - Consultation with the treating specialist is mandated.
+
+### 7.2 Salt-Equivalence & Divergence Screening
+- **Chemical Salt Equivalence:** Candidates must share the exact active chemical salt (e.g. Metformin Hydrochloride matches Metformin Hydrochloride). Different active ingredients are rejected.
+- **Formulation Strength Divergence:** Differences in dosage strength (e.g. 500mg vs 850mg or 1000mg) are explicitly flagged on candidate items (`strength_matches = False`, `divergence_notes`).
+- **Dosage Form Divergence:** Differences in physical formulation (e.g. tablet vs capsule) are explicitly flagged (`form_matches = False`).
+- **Zero Autonomous Modifications:** The service never alters, cancels, or prescribes medications autonomously.
+
+### 7.3 Active Medication Cross-Checking
+- Active prescriptions are retrieved exclusively from the canonical single-table record via `get_patient_context(patient_id)`.
+- Candidate formulations and scanned drugs are screened against active medications for documented pharmacopeia drug-drug interactions (e.g. Aspirin with Warfarin, Clopidogrel with Omeprazole).
+- Missing interaction profiles are explicitly represented (`interaction_check_status = "unavailable"`) rather than falsely asserting "safe" or "no interactions".
+
+### 7.4 Provenance & Confidence Gating
+- Extractions from blister pack scans retain unbroken provenance citations (`doc_id`, `page`, `bbox`, `verbatim`, `confidence`).
+- Scans with extraction confidence $< 0.85$ are gated into `NEEDS_REVIEW` state, preventing unverified medicine substitutions.
+
+---
+
+## 8. Reminders Workflow (M5)
+
+The CareThread reminders engine bridges the patient's post-discharge care plan with automated, timely, and privacy-preserving notifications over AWS EventBridge and Amazon SNS.
+
+### 8.1 Workflow Architecture
+
+```text
+PlanEntry (Day-by-day care schedule slots in Single Table)
+   ↓
+ReminderService (Deduplicates slots, calculates trigger times)
+   ↓
+EventBridge Scheduler (One-time targeted invocation schedules)
+   ↓
+Reminder Handler (AWS Lambda)
+   ├─ 1. Canonical Context Fetch (get_patient_context)
+   ├─ 2. Idempotency Verification (REMINDER#<id> status check)
+   ├─ 3. Adherence Check (plan_entry.done == True -> SUPPRESSED_COMPLETED)
+   └─ 4. Non-Sensitive Message Assembly
+   ↓
+Amazon SNS (Secure notification delivery via Topic or SMS)
+   ↓
+Patient Device (CareThread notification)
+```
+
+### 8.2 Production vs. Demo Mode Scheduling
+- **Production Mode:** Trigger timestamps are scheduled based on target dates (`day_index` offset from discharge) and standardized slot hours: Morning (08:00 UTC), Afternoon (13:00 UTC), Evening (18:00 UTC), Night (21:00 UTC).
+- **Demo Mode (`DEMO_MODE=true`):** To facilitate live judging and rapid end-to-end evaluation, trigger timestamps are compressed into a deterministic 30-second delay (`base_time + 30 seconds`).
+
+### 8.3 Adherence Suppression
+- Before dispatching any notification, the Lambda handler inspects the patient's canonical care plan (`context.plan_entries`).
+- If the patient has already marked the scheduled dose as completed (`plan_entry.done == True`), the reminder is automatically suppressed (`status = SUPPRESSED_COMPLETED`).
+- Suppressed reminders record the suppression state in the single table (`REMINDER#<reminder_id>`) and dispatch zero SNS messages.
+
+### 8.4 Strict Idempotency Guarantee
+- Invocations are keyed by `reminder_id` (e.g. `<patient_id>-d<day>-<slot>`) and tracked under `PK = PATIENT#<patient_id>`, `SK = REMINDER#<reminder_id>`.
+- Any subsequent or duplicate EventBridge trigger for an already processed reminder (sent, suppressed, or skipped) immediately aborts with `DUPLICATE_SKIPPED` without duplicate notifications.
+
+### 8.5 Privacy & HIPAA Non-Disclosure Protection
+- Notification messages dispatched to external channels (push/SMS) must never expose protected health information (PHI).
+- Disallowed content: diagnosis names (e.g. CAD, diabetes, hypertension), laboratory analyte values (e.g. creatinine, troponin), drug names, or specific dosages.
+- Outgoing payload standard: Generic recovery reminders directing the patient to open the authenticated CareThread application (e.g. *"CareThread reminder: It is time for your Morning care-plan activities. Please check your schedule in the CareThread app."*).
+- `MockNotificationPublisher` enforces automated regex scanning for clinical terms to prevent accidental information leaks.
+
+---
+
+## 9. CareThread API Layer Architecture (Module 10)
+
+The CareThread API layer exposes the unified clinical backend to frontend clients, enforcing strict authentication, provenance protection, and controlled mutations.
+
+### 9.1 Core API Surface
+
+| Method | Path | Purpose | Input | Output |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/documents` | Register document metadata & generate S3 presigned PUT URL | `DocumentCreateRequest` | `DocumentCreateResponse` (201) |
+| `GET` | `/documents/{id}` | Query document ingestion lifecycle and rasterized pages | Path `id` | `DocumentStatusResponse` (200) |
+| `GET` | `/record` | Retrieve full canonical episodic record from single partition | None (JWT `sub`) | `PatientRecordResponse` (200) |
+| `PATCH`| `/record/{field}` | Controlled entity field update with allowlist & provenance preservation | `RecordFieldPatchRequest` | `RecordFieldPatchResponse` (200) |
+| `POST` | `/substitution` | Bioequivalent formulary screening, NTI hard-block & interaction cross-check | `SubstitutionRequest` | `SubstitutionResponse` (200) |
+| `POST` | `/plan/{day}/{slot}/done` | Confirm dose adherence and trigger M5 reminder suppression | Path `day`, `slot` | `PlanDoneResponse` (200) |
+| `POST` | `/plan/generate` | Trigger 7-day care plan compilation from active prescriptions | None (JWT `sub`) | `CarePlanResult` (200) |
+| `POST` | `/labs/interpret` | Trigger deterministic lab report analysis against reference intervals | None (JWT `sub`) | `LabInterpretationReport` (200) |
+
+### 9.2 Security Invariants & Authentication
+1. **Authenticated Patient Identity:** `patient_id` is derived strictly from the Cognito JWT authorizer `sub` claim (`requestContext.authorizer.jwt.claims.sub`). Request body `patient_id` is strictly ignored and rejected if attempting spoofing.
+2. **Local/Demo Authentication:** For local judging or offline testing, `ALLOW_MOCK_AUTH=true` permits the `X-Patient-Id` header to be evaluated safely by [`carethread/shared/auth/extractor.py`](file:///c:/Users/CHATRADHARA/Downloads/fail/med/carethread/shared/auth/extractor.py).
+3. **Controlled Mutation Allowlists (`PATCH /record/{field}`):**
+   - Direct arbitrary DynamoDB updates are strictly prohibited.
+   - Allowlists enforce editable attributes:
+     - `PROFILE`: `name`, `age`, `phone`, `language`, `sex`
+     - `MED#*`: `strength`, `freq`, `instructions`, `duration_days`, `status`
+     - `DIAG#*`: `code`, `status`, `notes`, `display_name`
+     - `PLAN#*`: `action`, `time_target`, `done`
+   - Immutable attributes: `PK`, `SK`, `patient_id`, `created_at`, and OCR provenance citations (`source`, `doc_id`, `page`, `bbox`, `verbatim`).
+   - Resolving a `needs_review` chip automatically transitions the item's provenance status to `confirmed`.
+
+### 9.3 Consistent HTTP Error Envelope
+All error responses across all endpoints adhere to the structured error contract:
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable diagnostic explanation",
+    "details": []
+  }
+}
+```
+Standard status codes: `200 OK`, `201 Created`, `400 Bad Request`, `401 Unauthorized`, `404 Not Found`, `405 Method Not Allowed`, `500 Internal Server Error`. Zero internal stack traces or raw exceptions are leaked to the client.
+
+
+
+
+
+

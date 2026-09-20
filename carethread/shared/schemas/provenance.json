@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Provenance",
+  "description": "Standard provenance citation for any extracted clinical datum in CareThread",
+  "type": "object",
+  "required": ["field", "value", "source", "confidence", "status"],
+  "properties": {
+    "field": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the extracted entity or field"
+    },
+    "value": {
+      "description": "The extracted value or dictionary"
+    },
+    "source": {
+      "type": "object",
+      "required": ["doc_id", "page", "bbox", "verbatim"],
+      "properties": {
+        "doc_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Document ID from which value was extracted"
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-indexed page number"
+        },
+        "bbox": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0, "maximum": 1000 },
+          "minItems": 4,
+          "maxItems": 4,
+          "description": "[ymin, xmin, ymax, xmax] coordinates normalized to 0-1000"
+        },
+        "verbatim": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact verbatim substring from document"
+        }
+      },
+      "additionalProperties": false
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Confidence score between 0.0 and 1.0"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["extracted", "needs_review", "confirmed"],
+      "description": "Lifecycle status based on confidence >= 0.85 threshold"
+    }
+  },
+  "additionalProperties": false
+}

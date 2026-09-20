@@ -1,0 +1,10 @@
+-r requirements.txt
+pytest>=8.0.0
+
+# Same PDF engine the RasteriseFn layer carries, so the local suite exercises
+# real rendering rather than skipping it.
+pypdfium2>=4.30.0
+
+# Optional locally, for the camera-photo path. Pinned below 12.3.0, which
+# shipped without a cp311 wheel.
+pillow>=10.2.0,<12.3.0

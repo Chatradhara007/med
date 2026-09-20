@@ -1,0 +1,452 @@
+# CareThread — Canonical Data Contracts & Provenance Specification
+
+> **Contract Freeze Status:** FROZEN  
+> **Primary Source of Truth:** CareThread Build Documentation (24-Hour AWS Hackathon · *Ship It* Track)  
+> **Implementation State:** Shared Schemas, DynamoDB Repo, S3 Upload, M2 Care Plan, M3 Lab Interpreter, M4 Medicine Substitution, and M5 Reminders are **IMPLEMENTED (PASS)**. M1 Ingestion Pipeline and M6 API Handlers remain pending.
+
+---
+
+## 1. Provenance Contract — The One Invariant
+
+> [!IMPORTANT]
+> **"No value reaches the UI without a source."**  
+> Every extracted clinical entity must carry an unbroken, verified provenance record linking it to a physical scan coordinate. Entities missing valid provenance will fail schema validation.
+
+### 1.1 Source Citation Structure
+```json
+{
+  "doc_id": "d_014",
+  "page": 1,
+  "bbox": [120, 340, 480, 362],
+  "verbatim": "Tab. Metformin 500mg BD x 30 days"
+}
+```
+
+| Field | Type | Validation Rule | Status |
+| :--- | :--- | :--- | :--- |
+| `doc_id` | `string` | Non-empty string identifier of the originating document | **REQUIRED** |
+| `page` | `integer` | 1-indexed page number (`page >= 1`) | **REQUIRED** |
+| `bbox` | `array[4]` | `[ymin, xmin, ymax, xmax]` normalized to `0.0–1000.0`. Validates `ymin <= ymax` and `xmin <= xmax`. | **REQUIRED** |
+| `verbatim`| `string` | Non-empty exact substring transcribed from document text layer | **REQUIRED** |
+
+### 1.2 Confidence Gating & Extraction Lifecycle
+The confidence threshold is fixed at **`0.85`**:
+
+```
+[Extraction]
+      │
+      ▼
+confidence score
+      │
+  ┌───┴─────────────────────────┐
+  ▼                             ▼
+confidence >= 0.85        confidence < 0.85
+  │                             │
+  ▼                             ▼
+status: "confirmed"       status: "needs_review" (Amber UI chip)
+                                │
+                                ▼
+                    Patient taps in UI to accept or correct
+                                │
+                                ▼
+                          status: "confirmed"
+```
+
+- **`confidence >= 0.85`** $\rightarrow$ `status: "confirmed"`
+- **`confidence < 0.85`** $\rightarrow$ `status: "needs_review"`
+- **Patient Correction:** When the patient resolves a `needs_review` chip via `PATCH /record/field`, status transitions to `confirmed`.
+
+---
+
+## 2. Canonical Shared Entities
+
+### 2.1 Patient Profile (`shared.schemas.patient.Patient`)
+- **DynamoDB Keys:** `PK = PATIENT#<patient_id>`, `SK = PROFILE`
+- **Produced by:** Auth registration / M0
+- **Consumed by:** M2 (Care Plan), M6 (Core APIs), Web Frontend
+
+| Attribute | Type | Validation Rules | Classification |
+| :--- | :--- | :--- | :--- |
+| `patient_id` | `string` | Unique identifier (from Cognito JWT `sub` claim) | **REQUIRED** |
+| `name` | `string` | Patient full legal name | **REQUIRED** |
+| `age` | `integer`| Age in years (`0 <= age <= 150`) | **REQUIRED** |
+| `sex` | `string` | Biological sex (`M`, `F`, `Other`, `Unknown`) | **REQUIRED** |
+| `language` | `string` | Preferred language code (default: `"en"`) | **OPTIONAL** |
+| `phone` | `string` | Contact phone number for SMS adherence reminders | **REQUIRED** |
+| `created_at` | `string` | ISO 8601 registration timestamp | **OPTIONAL** |
+
+---
+
+### 2.2 Document Metadata (`shared.schemas.document.Document`)
+- **DynamoDB Keys:** `PK = PATIENT#<patient_id>`, `SK = DOC#<iso_ts>#<doc_id>`
+- **Produced by:** M0 (`POST /documents`), M1 (Ingest Pipeline)
+- **Consumed by:** M1, M6 (`GET /documents/{id}`), Web Frontend
+
+| Attribute | Type | Validation Rules | Classification |
+| :--- | :--- | :--- | :--- |
+| `patient_id` | `string` | Owning patient ID | **REQUIRED** |
+| `doc_id` | `string` | Document ID (`d_014`) | **REQUIRED** |
+| `type` | `enum` | `discharge_summary`, `lab_report`, `medicine_strip`, `prescription`, `unknown` | **REQUIRED** |
+| `s3_key` | `string` | Path in S3 `raw/<patient_id>/<doc_id>.<ext>` | **REQUIRED** |
+| `status` | `enum` | `uploading`, `uploaded`, `rasterising`, `classifying`, `extracting`, `validating`, `review_required`, `ready`, `unsupported`, `failed` | **REQUIRED** |
+| `pages` | `int \| list[str]`| Page count or list of rasterised page S3 keys | **OPTIONAL** |
+| `created_at` | `string` | ISO 8601 creation timestamp | **REQUIRED** |
+| `updated_at` | `string` | ISO 8601 last status transition timestamp | **REQUIRED** |
+| `error_reason`| `string` | Diagnostic failure message if `status == "failed"` | **OPTIONAL** |
+
+---
+
+### 2.3 Medication Item (`shared.schemas.medication.Medication`)
+- **DynamoDB Keys:** `PK = PATIENT#<patient_id>`, `SK = MED#<normalised_name>`
+- **Produced by:** M1 (Extract discharge summary / medicine strip)
+- **Consumed by:** M2 (Care Plan scheduler), M3 (Lab cross-read), M4 (Substitution cross-check), M6 (Record API)
+
+| Attribute | Type | Validation Rules | Classification |
+| :--- | :--- | :--- | :--- |
+| `name` | `string` | Brand or prescribed medicine name | **REQUIRED** |
+| `salt` | `string` | Active pharmaceutical salt (e.g. metformin hydrochloride) | **REQUIRED** |
+| `strength` | `string` | Formulation strength (e.g., `"500mg"`) | **REQUIRED** |
+| `form` | `string` | Formulation form (default: `"tablet"`) | **OPTIONAL** |
+| `freq` | `string` | Dosing frequency (e.g., `"OD"`, `"BD"`, `"TDS"`, `"QID"`, `"PRN"`) | **REQUIRED** |
+| `duration_days`| `integer`| Prescribed duration (`>= 0`) | **REQUIRED** |
+| `start_date` | `string` | ISO date string for prescription initiation | **OPTIONAL** |
+| `instructions`| `string` | Directions for use (e.g. "Take after meals") | **OPTIONAL** |
+| `provenance` | `ProvenanceEnvelope` | Verified source citation pinning to physical scan coordinates | **REQUIRED** |
+
+---
+
+### 2.4 Lab Result (`shared.schemas.lab_result.LabResult`)
+- **DynamoDB Keys:** `PK = PATIENT#<patient_id>`, `SK = LAB#<iso_ts>#<analyte>`
+- **Produced by:** M1 (Extract lab report), M3 (Lab Interpreter)
+- **Consumed by:** M3 (Ranking & cross-read), M7 (Cross-module reasoning), M6 (Record API)
+
+| Attribute | Type | Validation Rules | Classification |
+| :--- | :--- | :--- | :--- |
+| `analyte` | `string` | Analyte name (e.g., Serum Creatinine, Fasting Blood Sugar) | **REQUIRED** |
+| `value` | `float \| string` | Measured lab value | **REQUIRED** |
+| `unit` | `string` | Unit of measure (e.g. `mg/dL`, `mmol/L`) | **REQUIRED** |
+| `ref_low` | `float` | Lower biological reference limit | **OPTIONAL** |
+| `ref_high` | `float` | Upper biological reference limit | **OPTIONAL** |
+| `ref_source` | `string` | `"printed"` (from report) or `"fallback_ref_ranges"` (from data/ref_ranges.csv) | **OPTIONAL** |
+| `deviation_score`| `float`| Normalised deviation score: $(value - high) / (high - low)$ | **OPTIONAL** |
+| `flag` | `string` | `normal`, `high`, `low`, `critical` | **OPTIONAL** |
+| `provenance` | `ProvenanceEnvelope` | Verified source citation pinning to physical scan coordinates | **REQUIRED** |
+
+---
+
+### 2.5 Clinical Diagnosis (`shared.schemas.diagnosis.Diagnosis`)
+- **DynamoDB Keys:** `PK = PATIENT#<patient_id>`, `SK = DIAG#<code_or_slug>`
+- **Produced by:** M1 (Extract discharge summary)
+- **Consumed by:** M2 (Escalation rule qualification), M3 (Lab context), M6 (Record API)
+
+| Attribute | Type | Validation Rules | Classification |
+| :--- | :--- | :--- | :--- |
+| `label` | `string` | Clinical diagnosis label (e.g., Type 2 Diabetes Mellitus) | **REQUIRED** |
+| `code_or_slug`| `string` | URL-safe slug or internal code | **OPTIONAL** |
+| `icd_hint` | `string` | ICD-10 diagnostic code hint if stated in document | **OPTIONAL** |
+| `status` | `string` | Condition status (`"active"` or `"resolved"`) | **OPTIONAL** |
+| `provenance` | `ProvenanceEnvelope` | Verified source citation pinning to physical scan coordinates | **REQUIRED** |
+
+---
+
+### 2.6 Care Plan Entry (`shared.schemas.plan_entry.PlanEntry`)
+- **DynamoDB Keys:** `PK = PATIENT#<patient_id>`, `SK = PLAN#<day_index>#<slot>`
+- **Produced by:** M2 (Care Plan service)
+- **Consumed by:** M5 (Reminders), M6 (`POST /plan/{day}/{slot}/done`), Web Frontend
+
+| Attribute | Type | Validation Rules | Classification |
+| :--- | :--- | :--- | :--- |
+| `day_index` | `integer` | Day index in post-discharge timeline (`0 <= day_index <= 6`) | **REQUIRED** |
+| `slot` | `enum` | `morning`, `afternoon`, `evening`, `night` | **REQUIRED** |
+| `action` | `string` | Actionable instruction (e.g. "Take Tab Metformin 500mg") | **REQUIRED** |
+| `med_ref` | `string` | Sort key reference to medication (`MED#<name>`) | **REQUIRED** |
+| `time_target` | `string` | Target time of day (e.g., `"08:00"`) | **OPTIONAL** |
+| `done` | `boolean` | Dose adherence status (default: `false`) | **REQUIRED** |
+| `completed_at`| `string` | ISO 8601 timestamp when dose was taken | **OPTIONAL** |
+| `provenance` | `ProvenanceEnvelope` | Verified source citation linking to original prescription line | **REQUIRED** |
+
+---
+
+### 2.7 Alert Rule & Fired Alert (`shared.schemas.alert_rule.AlertRule`, `FiredAlert`)
+- **DynamoDB Keys:** `PK = PATIENT#<patient_id>`, `SK = ALERT#<iso_ts>`
+- **Produced by:** M2 (Deterministic rule engine), M7 (Cross-module reasoning)
+- **Consumed by:** M6 (Record API), Web Frontend
+
+> **SAFETY INVARIANT:** The rules decide. LLMs only format and translate. Escalation advice is **never** model-generated.
+
+| Attribute | Type | Validation Rules | Classification |
+| :--- | :--- | :--- | :--- |
+| `alert_id` | `string` | Unique alert instance ID | **REQUIRED** |
+| `rule_id` | `string` | Identifier matching static entry in `rules.yaml` | **REQUIRED** |
+| `severity` | `enum` | `info`, `warning`, `high`, `critical` | **REQUIRED** |
+| `message` | `string` | Deterministic escalation action (e.g., "Call emergency services now") | **REQUIRED** |
+| `fired_at` | `string` | ISO 8601 trigger timestamp | **REQUIRED** |
+| `acknowledged`| `boolean` | Patient acknowledgment flag | **OPTIONAL** |
+| `cross_module_context` | `dict` | Evidence from multiple documents triggering the alert | **OPTIONAL** |
+
+---
+
+### 2.8 Extraction Result (`shared.schemas.extraction.ExtractionResult`)
+- **Produced by:** M1 (Step Functions extraction and validation tasks)
+- **Consumed by:** M1 (Persistence task), M2 (Initial care plan seed)
+
+Unified envelope holding typed extraction outputs (`diagnoses`, `medications`, `lab_results`, `followups`, `restrictions`, `medicine_strip`) alongside overall document confidence, validation status (`valid`, `invalid`, `repaired`), and raw LLM JSON.
+
+---
+
+## 3. API Request & Response Contracts (`shared.schemas.api`)
+
+All endpoints are authenticated via Amazon Cognito JWT Authorizer. `patient_id` is extracted exclusively from the JWT `sub` claim.
+
+### 3.1 `POST /documents`
+- **Request:** `DocumentCreateRequest`
+  - `filename`: `string` (**REQUIRED**)
+  - `content_type`: `string` (**REQUIRED**, e.g., `application/pdf`)
+- **Response:** `DocumentCreateResponse`
+  - `doc_id`: `string` (**REQUIRED**)
+  - `upload_url`: `string` (**REQUIRED**, presigned S3 PUT URL)
+
+### 3.2 `GET /documents/{id}`
+- **Request:** Path parameter `doc_id`
+- **Response:** `DocumentStatusResponse`
+  - `doc_id`: `string` (**REQUIRED**)
+  - `status`: `DocumentStatus` (**REQUIRED**)
+  - `type`: `DocumentType` (**OPTIONAL**)
+  - `pages`: `list[string]` (**OPTIONAL**)
+  - `error`: `string` (**OPTIONAL**)
+
+### 3.3 `GET /record`
+- **Request:** Headers (`Authorization: Bearer <JWT>`)
+- **Response:** `PatientRecordResponse`
+  - `patient`: `Patient` (**OPTIONAL**)
+  - `documents`: `list[Document]` (**REQUIRED**)
+  - `diagnoses`: `list[Diagnosis]` (**REQUIRED**)
+  - `medications`: `list[Medication]` (**REQUIRED**)
+  - `lab_results`: `list[LabResult]` (**REQUIRED**)
+  - `plan_entries`: `list[PlanEntry]` (**REQUIRED**)
+  - `alerts`: `list[FiredAlert]` (**REQUIRED**)
+
+### 3.4 `PATCH /record/field`
+- **Request:** `RecordFieldPatchRequest`
+  - `sk`: `string` (**REQUIRED**, e.g., `MED#metformin`)
+  - `field`: `string` (**REQUIRED**)
+  - `value`: `any` (**REQUIRED**)
+- **Response:** `RecordFieldPatchResponse`
+  - `status`: `ProvenanceStatus.CONFIRMED` (**REQUIRED**)
+  - `updated_item`: `dict` (**REQUIRED**)
+
+### 3.5 `POST /substitution`
+- **Request:** `SubstitutionRequest`
+  - `doc_id`: `string` (**OPTIONAL**)
+  - `brand`: `string` (**OPTIONAL**)
+  - `strength`: `string` (**OPTIONAL**)
+  *(Validation: requires `doc_id` OR both `brand` and `strength`)*
+- **Response:** `SubstitutionResponse`
+  - `blocked`: `boolean` (**REQUIRED**, `true` if salt is on NTI blocklist)
+  - `reason`: `string` (**OPTIONAL**, e.g. "Warfarin has a narrow therapeutic index. Do not substitute.")
+  - `alternatives`: `list[DrugAlternative]` (**REQUIRED**)
+  - `interactions`: `list[string]` (**REQUIRED**)
+
+### 3.6 `POST /plan/{day}/{slot}/done`
+- **Request:** Path parameters `day`: integer, `slot`: `SlotName`
+- **Response:** `PlanDoneResponse`
+  - `day`: `integer` (**REQUIRED**)
+  - `slot`: `SlotName` (**REQUIRED**)
+  - `done`: `boolean` (always `true`)
+  - `completed_at`: `string` (ISO timestamp)
+
+---
+
+## 4. Module Contract Matrix
+
+| Module | Consumes Schemas | Produces Schemas | Implementation Status |
+| :--- | :--- | :--- | :--- |
+| **M0 (Infra)** | - | `Patient`, `Document` | **NOT IMPLEMENTED YET** (Skeleton in place) |
+| **M1 (Ingest Pipeline)** | S3 object, `Document` | `ExtractionResult`, `Medication`, `LabResult`, `Diagnosis`, `ProvenanceEnvelope` | **NOT IMPLEMENTED YET** |
+| **M2 (Care Plan)** | `Medication`, `Diagnosis`, `rules.yaml`, `DischargeRestriction`, `DischargeFollowup` | `PlanEntry`, `FiredAlert` | **IMPLEMENTED (PASS)** |
+| **M3 (Lab Interpreter)** | `LabResult`, `Medication`, `Diagnosis`, `ref_ranges.csv` | `InterpretedLabFinding`, `LabInterpretationReport` | **IMPLEMENTED (PASS)** |
+| **M4 (Substitution Check)** | `MedicineStripExtraction`, `drugs.csv`, `nti.csv`, active `Medication` | `SubstitutionAnalysisResult`, `SubstitutionResponse` | **IMPLEMENTED (PASS)** |
+| **M5 (Reminders)** | `PlanEntry`, `Patient` | SNS push notification payload | **NOT IMPLEMENTED YET** |
+| **M6 (APIs)** | API Requests | API Responses (`PatientRecordResponse`, etc.) | **PARTIAL** (`POST /documents`, `GET /documents/{id}` PASS) |
+| **M7 (Cross-Module)** | `Medication`, `LabResult`, `Diagnosis` | Cross-module `FiredAlert` (e.g. Metformin + Creatinine) | **NOT IMPLEMENTED YET** |
+
+---
+
+## 5. M3 — Lab Interpreter Contracts
+
+### 5.1 Service Interface
+```python
+def interpret_patient_labs(patient_id: str) -> LabInterpretationReport:
+    """Consumes canonical patient record and outputs structured interpretation report."""
+    ...
+```
+
+### 5.2 Input Schemas (Canonical Context)
+- `patient_id`: `string` (**REQUIRED**)
+- Extracted via `repository.get_patient_context(patient_id)`:
+  - `lab_results`: `list[LabResult]` (**REQUIRED**, must contain valid `provenance`)
+  - `diagnoses`: `list[Diagnosis]` (context only)
+  - `medications`: `list[Medication]` (context only)
+- Fallback Biological Reference Ranges (`data/ref_ranges.csv`):
+  - 35 standard analytes (`analyte`, `unit`, `ref_low`, `ref_high`, `sample_type`, `category`, `clinical_note`).
+
+### 5.3 Output Schemas
+
+#### `InterpretedLabFinding`
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `analyte` | `string` | Analyte name (e.g., "Serum Creatinine") |
+| `value` | `float \| string` | Reported numeric or qualitative value |
+| `unit` | `string` | Unit of measurement |
+| `ref_low` | `float \| null` | Lower reference bound |
+| `ref_high` | `float \| null` | Upper reference bound |
+| `ref_source` | `ReferenceRangeSource` | `"REPORT"`, `"FALLBACK"`, or `"NONE"` |
+| `status` | `FindingStatus` | `"below"`, `"within"`, `"above"`, `"unknown"` |
+| `deviation_score` | `float \| null` | Normalized deviation magnitude from range |
+| `rank` | `integer` | 1-based ranking position (abnormal findings first by deviation) |
+| `context_diagnoses` | `list[string]` | Active relevant patient diagnoses |
+| `context_medications`| `list[string]` | Active relevant patient medications |
+| `context_notes` | `list[string]` | Deterministic clinical advisory notes |
+| `explanation` | `string` | Patient-readable plain language explanation |
+| `provenance` | `ProvenanceEnvelope[Any]` | Intact provenance inherited from underlying `LabResult` |
+| `confidence` | `float \| null` | Extraction confidence score |
+| `review_status` | `string` | `"confirmed"` or `"needs_review"` (uncertainty preserved) |
+
+#### `LabInterpretationReport`
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `patient_id` | `string` | Canonical patient ID |
+| `total_findings` | `integer` | Total number of findings analyzed |
+| `abnormal_count` | `integer` | Count of findings outside reference bounds |
+| `top_findings` | `list[InterpretedLabFinding]` | Top 3 findings ranked by deviation score |
+| `all_findings` | `list[InterpretedLabFinding]` | All findings sorted deterministically |
+| `cross_module_alerts`| `list[string]` | High-priority cross-module clinical alerts |
+| `generated_at` | `string` | ISO 8601 UTC timestamp |
+
+---
+
+## 6. M4 — Medicine Substitution Contracts
+
+### 6.1 Service Interface
+```python
+def check_substitution(
+    patient_id: Optional[str] = None,
+    doc_id: Optional[str] = None,
+    brand: Optional[str] = None,
+    salt: Optional[str] = None,
+    strength: Optional[str] = None,
+    form: Optional[str] = None,
+) -> SubstitutionAnalysisResult:
+    """Evaluates substitution feasibility, NTI restrictions, and active medication interaction risks."""
+    ...
+```
+
+### 6.2 Input Schemas
+- **From Medicine Image Scan:** `doc_id` referencing a verified `MedicineStripExtraction` carrying mandatory provenance citations.
+- **From Direct Clinical Query:** `brand`, `salt`, `strength`, `form`.
+- **From Patient Canonical Record:** Active `Medication[]` retrieved via `get_patient_context(patient_id)`.
+- **From Reference Formularies:** `data/drugs.csv` (200+ drugs) and `data/nti.csv` (10 NTI hard-block rules).
+
+### 6.3 State Lifecycle (`SubstitutionResultState`)
+- `SUBSTITUTION_AVAILABLE`: Non-NTI bioequivalent salt-matched alternatives identified.
+- `SUBSTITUTION_BLOCKED_NTI`: Medicine is on Narrow Therapeutic Index list; substitution strictly prohibited.
+- `NO_MATCH`: No salt-equivalent formulations exist in curated catalog; zero substitutes invented.
+- `NEEDS_REVIEW`: Blister pack extraction confidence is $< 0.85$, requiring patient/clinician verification.
+
+### 6.4 Output Schemas
+
+#### `CandidateAlternative`
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `brand` | `string` | Alternative trade brand name |
+| `salt` | `string` | Active pharmaceutical ingredient (exact match) |
+| `strength` | `string` | Formulation strength (e.g. "500mg") |
+| `strength_mg` | `float` | Numeric strength in mg |
+| `form` | `string` | Dosage form ("tablet", "capsule") |
+| `manufacturer` | `string \| null` | Packaging pharmaceutical company |
+| `price_inr` | `float \| null` | Approximate retail price in INR |
+| `nti` | `boolean` | Narrow Therapeutic Index flag |
+| `common_interactions`| `list[string]` | Curated formulary interaction risks |
+| `strength_matches`| `boolean` | True if numeric strength matches query drug |
+| `form_matches` | `boolean` | True if dosage form matches query drug |
+| `divergence_notes`| `list[string]` | Explicit warnings for strength or form differences |
+
+#### `SubstitutionAnalysisResult`
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `state` | `SubstitutionResultState` | Primary classification state |
+| `blocked` | `boolean` | True if substitution prohibited (NTI) |
+| `title` | `string \| null` | Headline summary |
+| `message` | `string \| null` | Plain language explanation |
+| `clinical_rationale` | `string \| null` | Pharmacological rationale (enforced for NTI blocks) |
+| `detected_medicine` | `DetectedMedicine \| null`| Extracted source formulation with provenance |
+| `alternatives` | `list[CandidateAlternative]`| Salt-equivalent candidate formulations |
+| `interactions` | `list[InteractionAdvisory]` | Advisory warnings cross-checked against active meds |
+| `interaction_check_status` | `string` | `"available"` or `"unavailable"` |
+| `review_status` | `string` | `"confirmed"` or `"needs_review"` (uncertainty preserved) |
+| `provenance` | `ProvenanceEnvelope \| null`| Source blister pack citation |
+
+---
+
+## 7. M5 — Reminders Contract
+
+> **Implementation State:** Fully Implemented and Validated (20/20 tests passed).  
+> **Primary Workflow:** `PlanEntry -> EventBridge Scheduler -> Reminder Handler (AWS Lambda) -> Amazon SNS`
+
+### 7.1 Single-Table Key Pattern
+Reminders are stored in the canonical CareThread DynamoDB table:
+- **Partition Key (`PK`):** `PATIENT#<patient_id>`
+- **Sort Key (`SK`):** `REMINDER#<reminder_id>`
+
+### 7.2 Reminder Lifecycle States (`ReminderStatus`)
+- `SCHEDULED`: Trigger registered with EventBridge Scheduler.
+- `SENT`: Reminder successfully published to patient notification endpoint.
+- `SUPPRESSED_COMPLETED`: Task adherence verified in canonical record (`plan_entry.done == True`); notification suppressed.
+- `DUPLICATE_SKIPPED`: Duplicate EventBridge invocation detected; skipped to maintain strict idempotency.
+- `FAILED`: Delivery or execution error encountered.
+- `CANCELLED`: Reminder explicitly revoked.
+
+### 7.3 Data Schemas
+
+#### `ReminderEvent` (EventBridge Trigger Payload)
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `reminder_id` | `string` | Unique identifier (e.g. `<patient_id>-d<day>-<slot>`) |
+| `patient_id` | `string` | Target patient identifier |
+| `day_index` | `integer` | Care plan day index (0 to 6) |
+| `slot` | `SlotName` | Target time slot (`morning`, `afternoon`, `evening`, `night`) |
+| `scheduled_time`| `string` | Target ISO 8601 execution timestamp |
+| `demo_mode` | `boolean` | If True, compressed 30-second delay for live judging |
+| `idempotency_key`| `string`| Idempotency token preventing duplicate notifications |
+
+#### `ReminderRecord` (DynamoDB Entity)
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `reminder_id` | `string` | Unique identifier |
+| `patient_id` | `string` | Target patient identifier |
+| `day_index` | `integer` | Care plan day index (0 to 6) |
+| `slot` | `SlotName` | Target slot |
+| `scheduled_time`| `string` | Scheduled trigger timestamp |
+| `status` | `ReminderStatus` | Current lifecycle state |
+| `sent_at` | `string \| null` | ISO timestamp when notification was sent |
+| `created_at` | `string` | ISO timestamp when record was created |
+| `idempotency_key`| `string` | Unique idempotency token |
+
+#### `ReminderExecutionResult` (Handler Response)
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| `status_code` | `integer` | HTTP status code (200, 400, 404, 500) |
+| `status` | `ReminderStatus` | Final execution outcome |
+| `reminder_id` | `string` | Processed reminder ID |
+| `message` | `string` | Informational or diagnostic outcome message |
+| `published` | `boolean` | True if an external SNS notification was dispatched |
+| `error` | `string \| null` | Error details if status is FAILED |
+
+### 7.4 Invariants & Safety Constraints
+1. **Adherence Suppression**: If `plan_entry.done == True`, reminder execution terminates with `SUPPRESSED_COMPLETED` and dispatches 0 notifications.
+2. **Strict Idempotency**: Duplicate invocations matching an already-processed `reminder_id` terminate with `DUPLICATE_SKIPPED` and dispatch 0 duplicate notifications.
+3. **Privacy & PHI Protection**: Outgoing notification bodies must NEVER disclose sensitive health details, diagnosis names (CAD, diabetes), lab values (creatinine, troponin), or medication names. Only generic recovery reminders are dispatched.
+4. **Demo Mode Compression**: Setting `demo_mode=True` schedules events with a 30-second delay (`DEMO_REMINDER_DELAY_SECONDS = 30`) to facilitate rapid evaluation.
+
+
+
