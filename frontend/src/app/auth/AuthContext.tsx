@@ -3,11 +3,14 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { Amplify } from 'aws-amplify';
 import { getCurrentUser, signOut as amplifySignOut, signInWithRedirect } from 'aws-amplify/auth';
+import { config, isConfigured } from '../../config';
 
 interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   userId: string | null;
+  /** Non-null when the last sign-in attempt failed, so the page can show it. */
+  authError: string | null;
   login: () => void;
   logout: () => void;
 }
@@ -15,35 +18,37 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
- * Cognito's allowed callback URLs are matched exactly, and the stack registers
- * them with a trailing slash. `window.location.origin` has none, so sending it
- * bare is rejected with redirect_mismatch. Default to the origin plus a slash,
- * and allow an override for deployments registered differently.
+ * Configuring Amplify with blank values makes it throw `Auth UserPool not
+ * configured.` from inside the sign-in click handler, where nothing catches
+ * it: the button appears dead and the console error is the only trace. Skip
+ * configuration entirely when the app is unconfigured -- `ConfigRequired`
+ * renders instead of the app, so no auth call is ever made.
  */
-const redirectUri = import.meta.env.VITE_REDIRECT_URI || `${window.location.origin}/`;
-
-Amplify.configure({
-  Auth: {
-    Cognito: {
-      userPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID || '',
-      userPoolClientId: import.meta.env.VITE_COGNITO_USER_POOL_CLIENT_ID || '',
-      loginWith: {
-        oauth: {
-          domain: import.meta.env.VITE_COGNITO_DOMAIN || '',
-          scopes: ['email', 'openid', 'profile'],
-          redirectSignIn: [redirectUri],
-          redirectSignOut: [redirectUri],
-          responseType: 'code'
+if (isConfigured) {
+  Amplify.configure({
+    Auth: {
+      Cognito: {
+        userPoolId: config.userPoolId,
+        userPoolClientId: config.userPoolClientId,
+        loginWith: {
+          oauth: {
+            domain: config.cognitoDomain,
+            scopes: ['email', 'openid', 'profile'],
+            redirectSignIn: [config.redirectUri],
+            redirectSignOut: [config.redirectUri],
+            responseType: 'code'
+          }
         }
       }
     }
-  }
-});
+  });
+}
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -63,7 +68,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const login = () => {
-    signInWithRedirect();
+    setAuthError(null);
+    // signInWithRedirect rejects rather than throwing synchronously, so an
+    // unawaited call loses the reason entirely and the button looks inert.
+    signInWithRedirect().catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Sign-in failed', err);
+      setAuthError(msg);
+    });
   };
 
   const logout = async () => {
@@ -77,7 +89,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, isLoading, userId, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, isLoading, userId, authError, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -148,6 +148,28 @@ Rasterise → Classify → RouteByType ─┬→ ExtractX → ValidateSchema →
 All endpoints authenticate through the Cognito JWT authorizer. `patient_id`
 comes from the `sub` claim and is never accepted from the request body.
 
+## The web app
+
+```bash
+cd frontend
+cp .env.example .env     # then fill in the stack outputs
+npm install
+npm run dev
+```
+
+**Do not skip the copy, and do not leave the values blank.** `.env` is
+gitignored, so a fresh clone has none, and without it the app cannot sign in
+at all — the sign-in button throws `Auth UserPool not configured.` into the
+console and nothing loads. Fill it from your stack:
+
+```bash
+aws cloudformation describe-stacks --stack-name carethread \
+  --query "Stacks[0].Outputs" --output table
+```
+
+If the app opens on a "CareThread is not configured" screen, it names the
+missing variables and which output each comes from. See `frontend/README.md`.
+
 ### Notes for the web app
 
 - **Sign-in** uses the Cognito hosted UI (authorization code + PKCE, no client

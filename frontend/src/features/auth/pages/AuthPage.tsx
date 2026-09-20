@@ -2,7 +2,7 @@ import { useAuth } from '../../../app/auth/AuthContext';
 import { Navigate } from 'react-router-dom';
 
 export const AuthPage = () => {
-  const { login, isAuthenticated, isLoading } = useAuth();
+  const { login, isAuthenticated, isLoading, authError } = useAuth();
 
   if (isLoading) return <div style={{ padding: '20px' }}>Loading...</div>;
   if (isAuthenticated) return <Navigate to="/" replace />;
@@ -18,6 +18,15 @@ export const AuthPage = () => {
       >
         Sign In with AWS Cognito
       </button>
+
+      {authError && (
+        <p
+          role="alert"
+          style={{ color: '#b91c1c', marginTop: '20px', maxWidth: '420px', textAlign: 'center', fontSize: '0.9rem' }}
+        >
+          Sign-in failed: {authError}
+        </p>
+      )}
     </div>
   );
 };

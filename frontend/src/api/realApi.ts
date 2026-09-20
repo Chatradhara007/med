@@ -1,4 +1,5 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
+import { config } from '../config';
 import type {
   BackendPatientRecord,
   BackendDocumentDetail,
@@ -21,7 +22,20 @@ import {
   type LabResultValue,
 } from '../types/api';
 
-const getBaseUrl = () => import.meta.env.VITE_API_GATEWAY_URL || '';
+/**
+ * An empty base URL silently turns `/record` into a same-origin request that
+ * the dev server answers with index.html, so `response.json()` fails on an
+ * HTML document and the real cause -- no API URL -- never surfaces.
+ */
+const getBaseUrl = (): string => {
+  if (!config.apiBaseUrl) {
+    throw new Error(
+      'VITE_API_GATEWAY_URL is not set. Copy frontend/.env.example to ' +
+        'frontend/.env, fill in the stack outputs, and restart the dev server.',
+    );
+  }
+  return config.apiBaseUrl;
+};
 
 // ─── Authenticated fetch helper ───────────────────────────────────────────────
 
