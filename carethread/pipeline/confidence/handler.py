@@ -19,6 +19,7 @@ Two invariants are enforced here and nowhere else:
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -341,6 +342,60 @@ def mark_ready(
     return envelope
 
 
+# Errors we raise ourselves carry wording written for the patient. Anything
+# else is infrastructure detail and must never reach them.
+_PATIENT_SAFE_ERROR_TYPES = {"UnsupportedDocumentError"}
+
+GENERIC_FAILURE_REASON = (
+    "We could not read this document. Please check the file and try uploading it again."
+)
+
+
+def patient_facing_reason(payload: Dict[str, Any]) -> str:
+    """Derive a reason safe to show a patient.
+
+    Lambda delivers the Step Functions `Cause` as a JSON *string* containing
+    errorMessage, errorType and a stackTrace -- all on one line. Taking the
+    first line therefore keeps the whole thing, file paths and all. The only
+    messages that reach the patient are ones this codebase authored.
+    """
+    explicit = payload.get("unsupported_reason")
+    if explicit:
+        return str(explicit).splitlines()[0][:500]
+
+    error = payload.get("error") or {}
+    cause = error.get("Cause")
+
+    error_type, message = None, None
+    if isinstance(cause, str) and cause.lstrip().startswith("{"):
+        try:
+            parsed = json.loads(cause)
+            error_type = parsed.get("errorType")
+            message = parsed.get("errorMessage")
+        except (ValueError, TypeError):
+            pass
+    elif isinstance(cause, dict):
+        error_type = cause.get("errorType")
+        message = cause.get("errorMessage")
+
+    if error_type is None:
+        error_type = error.get("Error")
+    if message is None and isinstance(cause, str):
+        message = cause
+
+    if error_type in _PATIENT_SAFE_ERROR_TYPES and message:
+        return str(message).splitlines()[0][:500]
+
+    # Everything else -- a throttled model, a bad model id, an IAM denial --
+    # is logged in full and summarised generically.
+    logger.error(
+        "Ingest failed with %s: %s",
+        error_type or "an unknown error",
+        str(message or cause)[:2000],
+    )
+    return GENERIC_FAILURE_REASON
+
+
 def handle_failure(
     event: Dict[str, Any], repository: Optional[PatientRepositoryInterface] = None
 ) -> Dict[str, Any]:
@@ -355,15 +410,7 @@ def handle_failure(
         nested.setdefault("error", payload.get("error"))
         payload = nested
 
-    error = payload.get("error") or {}
-    reason = (
-        error.get("Cause")
-        or error.get("Error")
-        or payload.get("unsupported_reason")
-        or "We could not read this document. Please try uploading it again."
-    )
-    # Step Functions Causes carry a full stack trace; never show that to a patient.
-    reason = str(reason).splitlines()[0][:500]
+    reason = patient_facing_reason(payload)
 
     try:
         envelope = envelope_from_event(payload)

@@ -516,8 +516,15 @@ def test_handle_failure_still_accepts_a_flat_late_stage_state(repo):
         "bucket": BUCKET,
         "error": {"Cause": "Bedrock throttled"},
     }
-    assert handle_failure(event, repository=repo)["final_status"] == DocumentStatus.FAILED.value
-    assert repo.get_document(PATIENT, DOC).error_reason == "Bedrock throttled"
+    result = handle_failure(event, repository=repo)
+
+    assert result["final_status"] == DocumentStatus.FAILED.value
+    document = repo.get_document(PATIENT, DOC)
+    assert document.status == DocumentStatus.FAILED
+    # "Bedrock throttled" names our infrastructure, so the patient gets the
+    # generic wording instead; the detail goes to the log.
+    assert "Bedrock" not in document.error_reason
+    assert "could not read this document" in document.error_reason.lower()
 
 
 def test_state_machine_failure_path_resolves_against_the_eventbridge_input():
@@ -539,3 +546,81 @@ def test_state_machine_failure_path_resolves_against_the_eventbridge_input():
             assert field in available, (
                 f"HandleFailure resolves {value}, absent when Rasterise fails"
             )
+
+
+# ==================================================
+# 11. Failure reasons must not leak infrastructure detail
+# ==================================================
+
+def _lambda_cause(error_message, error_type):
+    """The exact envelope Lambda hands Step Functions: JSON, all on one line."""
+    return {
+        "error": {
+            "Error": error_type,
+            "Cause": json.dumps(
+                {
+                    "errorMessage": error_message,
+                    "errorType": error_type,
+                    "requestId": "def7d0b9-a206-4fb3-9a04-d9998ed0e2ad",
+                    "stackTrace": [
+                        '  File "/var/task/carethread/pipeline/classify/handler.py", line 136, in handler\n',
+                        "  File \"/var/task/carethread/shared/bedrock/client.py\", line 140, in _invoke\n",
+                    ],
+                }
+            ),
+        }
+    }
+
+
+def test_lambda_error_json_does_not_reach_the_patient(repo, envelope):
+    """Observed in production: the whole JSON blob was written to error_reason.
+
+    Splitting on newlines does nothing here -- Lambda puts errorMessage,
+    errorType, requestId and the stackTrace on a single line -- so the UI was
+    showing /var/task paths and internal function names.
+    """
+    envelope.update(
+        _lambda_cause(
+            "Bedrock invoke_model failed for model xyz: The provided model identifier is invalid.",
+            "BedrockInvocationError",
+        )
+    )
+    handle_failure(envelope, repository=repo)
+
+    reason = repo.get_document(PATIENT, DOC).error_reason
+    for leak in ("/var/task", "stackTrace", "errorType", "requestId", "Bedrock", "invoke_model"):
+        assert leak not in reason, f"error_reason leaked {leak!r}: {reason}"
+    assert "could not read this document" in reason.lower()
+
+
+def test_our_own_messages_are_still_shown(repo, envelope):
+    """Wording this codebase authored is written for the patient, so it stays."""
+    envelope.update(
+        _lambda_cause("Unsupported upload format '.docx'", "UnsupportedDocumentError")
+    )
+    handle_failure(envelope, repository=repo)
+    assert repo.get_document(PATIENT, DOC).error_reason == "Unsupported upload format '.docx'"
+
+
+def test_an_unrecognised_error_type_is_generic(repo, envelope):
+    envelope.update(_lambda_cause("connection reset by peer", "ConnectionError"))
+    handle_failure(envelope, repository=repo)
+    assert "could not read this document" in repo.get_document(PATIENT, DOC).error_reason.lower()
+
+
+def test_a_bare_traceback_string_is_generic(repo, envelope):
+    envelope["error"] = {
+        "Cause": 'Traceback (most recent call last):\n  File "/var/task/x.py"\nValueError: boom'
+    }
+    handle_failure(envelope, repository=repo)
+    reason = repo.get_document(PATIENT, DOC).error_reason
+    assert "/var/task" not in reason and "Traceback" not in reason
+
+
+def test_classify_unsupported_message_survives(repo, envelope):
+    """The unsupported-document path sets its own wording, which must pass through."""
+    from carethread.pipeline.classify.handler import UNSUPPORTED_MESSAGE
+
+    envelope["unsupported_reason"] = UNSUPPORTED_MESSAGE
+    handle_failure(envelope, repository=repo)
+    assert repo.get_document(PATIENT, DOC).error_reason == UNSUPPORTED_MESSAGE

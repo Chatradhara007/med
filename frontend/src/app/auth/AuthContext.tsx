@@ -14,27 +14,31 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const isMock = import.meta.env.VITE_USE_MOCK_API !== 'false';
+/**
+ * Cognito's allowed callback URLs are matched exactly, and the stack registers
+ * them with a trailing slash. `window.location.origin` has none, so sending it
+ * bare is rejected with redirect_mismatch. Default to the origin plus a slash,
+ * and allow an override for deployments registered differently.
+ */
+const redirectUri = import.meta.env.VITE_REDIRECT_URI || `${window.location.origin}/`;
 
-if (!isMock) {
-  Amplify.configure({
-    Auth: {
-      Cognito: {
-        userPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID || '',
-        userPoolClientId: import.meta.env.VITE_COGNITO_USER_POOL_CLIENT_ID || '',
-        loginWith: {
-          oauth: {
-            domain: import.meta.env.VITE_COGNITO_DOMAIN || '',
-            scopes: ['email', 'openid', 'profile'],
-            redirectSignIn: [window.location.origin],
-            redirectSignOut: [window.location.origin],
-            responseType: 'code'
-          }
+Amplify.configure({
+  Auth: {
+    Cognito: {
+      userPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID || '',
+      userPoolClientId: import.meta.env.VITE_COGNITO_USER_POOL_CLIENT_ID || '',
+      loginWith: {
+        oauth: {
+          domain: import.meta.env.VITE_COGNITO_DOMAIN || '',
+          scopes: ['email', 'openid', 'profile'],
+          redirectSignIn: [redirectUri],
+          redirectSignOut: [redirectUri],
+          responseType: 'code'
         }
       }
     }
-  });
-}
+  }
+});
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -55,45 +59,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    if (isMock) {
-      // Check mock session
-      const mockSession = localStorage.getItem('mock_auth');
-      if (mockSession) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setIsAuthenticated(true);
-        setUserId('mock_user_123');
-      }
-      setIsLoading(false);
-    } else {
-      // Real Cognito check
-      checkUser();
-    }
+    checkUser();
   }, []);
 
   const login = () => {
-    if (isMock) {
-      localStorage.setItem('mock_auth', 'true');
-      setIsAuthenticated(true);
-      setUserId('mock_user_123');
-      window.location.href = '/';
-    } else {
-      signInWithRedirect();
-    }
+    signInWithRedirect();
   };
 
   const logout = async () => {
-    if (isMock) {
-      localStorage.removeItem('mock_auth');
-      setIsAuthenticated(false);
-      setUserId(null);
-      window.location.href = '/auth';
-    } else {
-      try {
-        await amplifySignOut();
-      } catch (err) {
-        console.error('Error signing out', err);
-      }
+    try {
+      await amplifySignOut();
+    } catch (err) {
+      console.error('Error signing out', err);
     }
+    setIsAuthenticated(false);
+    setUserId(null);
   };
 
   return (

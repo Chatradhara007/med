@@ -1,4 +1,3 @@
-import { mockApi } from '../mocks/api';
 import { realApi } from './realApi';
 import type {
   PatientRecord,
@@ -28,7 +27,7 @@ export interface CareThreadApi {
   interpretLabs(): Promise<LabInterpretationReport>;
 }
 
-const isMock = import.meta.env.VITE_USE_MOCK_API !== 'false';
-
-// Switch seamlessly between Mock and Real API based on the environment variable
-export const apiClient: CareThreadApi = isMock ? mockApi : realApi;
+// There is one implementation. The app always talks to the deployed backend,
+// so a missing or misspelt environment variable can never silently serve
+// fixture data that looks real.
+export const apiClient: CareThreadApi = realApi;
