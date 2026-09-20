@@ -16,6 +16,14 @@ class Diagnosis(BaseModel):
     code_or_slug: Optional[str] = Field(default=None, description="Normalized slug or diagnostic code")
     icd_hint: Optional[str] = Field(default=None, description="Extracted or referenced ICD code hint if present")
     status: str = Field(default="active", description="Condition status: active or resolved")
+    display_name: Optional[str] = Field(
+        default=None,
+        description="Patient-facing label, when the clinical one is not readable. Never replaces `label`.",
+    )
+    notes: Optional[str] = Field(
+        default=None,
+        description="Patient's own note on this diagnosis. Never merged into extracted values.",
+    )
     provenance: ProvenanceEnvelope[Any] = Field(
         ...,
         description="Mandatory provenance citation proving this diagnosis was extracted from a verified document"

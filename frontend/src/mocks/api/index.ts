@@ -242,11 +242,6 @@ export const mockApi: CareThreadApi = {
     );
   },
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  updateRecord: async (_req: Record<string, string | number | boolean>): Promise<void> => {
-    return new Promise((resolve) => setTimeout(resolve, 400));
-  },
-
   updateRecordField: async (req: UpdateRecordFieldRequest): Promise<void> => {
     return new Promise((resolve) => {
       setTimeout(() => {

@@ -71,8 +71,13 @@ ENTITY_ALLOWLIST: Dict[str, Dict[str, Set[str]]] = {
         "forbidden": {"pk", "sk", "name", "created_at", "source", "doc_id", "bbox", "verbatim", "provenance.source"},
     },
     "DIAG": {
-        "editable": {"code", "status", "notes", "display_name"},
-        "forbidden": {"pk", "sk", "provenance.source", "source", "doc_id", "bbox", "verbatim"},
+        # `icd_hint` is the editable code. `code_or_slug` derives the sort key,
+        # so editing it would write to the old row and orphan it.
+        "editable": {"icd_hint", "status", "notes", "display_name"},
+        "forbidden": {
+            "pk", "sk", "label", "code_or_slug", "provenance.source",
+            "source", "doc_id", "bbox", "verbatim",
+        },
     },
     "PLAN": {
         "editable": {"action", "time_target", "done"},

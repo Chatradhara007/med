@@ -466,7 +466,7 @@ def test_documented_key_patterns():
     # LAB#<iso_ts>#<analyte>
     lab = LabResult(analyte="Serum Creatinine", value=1.2, unit="mg/dL", provenance=env)
     assert lab.pk("123") == "PATIENT#123"
-    assert lab.sk("2026-09-19T10:00:00Z") == "LAB#2026-09-19T10:00:00Z#serum_creatinine"
+    assert lab.sk_for("2026-09-19T10:00:00Z") == "LAB#2026-09-19T10:00:00Z#serum_creatinine"
 
     # DIAG#<code_or_slug>
     diag = Diagnosis(label="Myocardial Infarction", code_or_slug="mi", provenance=env)

@@ -371,3 +371,148 @@ def test_patch_response_hides_internal_storage_keys(service, repo):
     assert response.updated_item["age"] == 70
     assert "PK" not in response.updated_item
     assert "SK" not in response.updated_item
+
+
+# ==================================================
+# 6. The PATCH allowlist must match the models
+# ==================================================
+
+def test_every_editable_field_exists_on_its_model():
+    """An allowlisted field that the model lacks loses the edit silently.
+
+    update_entity_field writes it to DynamoDB, model_validate drops it on the
+    next read, and the patient's correction disappears with a 200 response.
+    """
+    from carethread.api.record.service import ENTITY_ALLOWLIST
+    from carethread.shared.schemas.diagnosis import Diagnosis
+    from carethread.shared.schemas.medication import Medication
+    from carethread.shared.schemas.patient import Patient
+    from carethread.shared.schemas.plan_entry import PlanEntry
+
+    models = {
+        "PROFILE": Patient,
+        "MED": Medication,
+        "DIAG": Diagnosis,
+        "PLAN": PlanEntry,
+    }
+    for entity, model in models.items():
+        known = set(model.model_fields) | set(model.model_computed_fields)
+        unknown = sorted(f for f in ENTITY_ALLOWLIST[entity]["editable"] if f not in known)
+        assert not unknown, f"{entity} allows editing fields absent from {model.__name__}: {unknown}"
+
+
+def test_sort_key_inputs_are_immutable():
+    """Editing a key-derived field would write to the old row and orphan it."""
+    from carethread.api.record.service import ENTITY_ALLOWLIST
+
+    # Medication.sk derives from name; Diagnosis.sk from code_or_slug.
+    assert "name" not in ENTITY_ALLOWLIST["MED"]["editable"]
+    assert "code_or_slug" not in ENTITY_ALLOWLIST["DIAG"]["editable"]
+    assert "code_or_slug" in ENTITY_ALLOWLIST["DIAG"]["forbidden"]
+    # day_index/slot derive PlanEntry.sk.
+    for field in ("day_index", "slot"):
+        assert field not in ENTITY_ALLOWLIST["PLAN"]["editable"]
+
+
+def test_diagnosis_code_edits_target_the_icd_hint():
+    """`code` meant the ICD code, not the slug that builds the sort key."""
+    from carethread.api.record.service import ENTITY_ALLOWLIST
+
+    assert "icd_hint" in ENTITY_ALLOWLIST["DIAG"]["editable"]
+    assert "code" not in ENTITY_ALLOWLIST["DIAG"]["editable"]
+
+
+def test_patched_field_survives_a_round_trip(repo, service):
+    """The end-to-end proof: edit it, read it back, it is still there."""
+    from carethread.shared.schemas.api import RecordFieldPatchRequest
+    from carethread.shared.schemas.diagnosis import Diagnosis
+    from carethread.shared.schemas.provenance import ProvenanceEnvelope, ProvenanceSource
+
+    envelope = ProvenanceEnvelope(
+        field="diagnosis",
+        value={},
+        confidence=0.95,
+        source=ProvenanceSource(doc_id="d_1", page=1, bbox=[1, 1, 2, 2], verbatim="T2DM"),
+    )
+    repo.create_diagnosis(
+        PATIENT,
+        Diagnosis(label="Type 2 Diabetes", code_or_slug="t2dm", provenance=envelope),
+    )
+
+    for field, value in (("notes", "Ask about morning dose"), ("display_name", "Diabetes"), ("icd_hint", "E11.9")):
+        service.patch_record_field(
+            PATIENT, RecordFieldPatchRequest(sk="DIAG#t2dm", field=field, value=value)
+        )
+
+    stored = repo.get_diagnoses(PATIENT)[0]
+    assert stored.notes == "Ask about morning dose"
+    assert stored.display_name == "Diabetes"
+    assert stored.icd_hint == "E11.9"
+    # The correction confirms the chip.
+    assert stored.provenance.status.value == "confirmed"
+
+
+def test_medication_status_survives_a_round_trip(repo, service):
+    from carethread.shared.schemas.api import RecordFieldPatchRequest
+    from carethread.shared.schemas.medication import Medication
+    from carethread.shared.schemas.provenance import ProvenanceEnvelope, ProvenanceSource
+
+    envelope = ProvenanceEnvelope(
+        field="medication",
+        value={},
+        confidence=0.95,
+        source=ProvenanceSource(doc_id="d_1", page=1, bbox=[1, 1, 2, 2], verbatim="v"),
+    )
+    repo.create_medication(
+        PATIENT,
+        Medication(
+            name="Metformin", salt="metformin hydrochloride", strength="500mg",
+            freq="BD", duration_days=30, provenance=envelope,
+        ),
+    )
+    assert repo.get_medications(PATIENT)[0].status == "active"
+
+    service.patch_record_field(
+        PATIENT, RecordFieldPatchRequest(sk="MED#metformin", field="status", value="stopped")
+    )
+    assert repo.get_medications(PATIENT)[0].status == "stopped"
+
+
+def test_lab_result_sk_is_the_real_storage_key_once_written(repo):
+    """The UI maps l.sk; it must be addressable, not undefined."""
+    from carethread.shared.schemas.lab_result import LabResult
+    from carethread.shared.schemas.provenance import ProvenanceEnvelope, ProvenanceSource
+
+    envelope = ProvenanceEnvelope(
+        field="lab_result",
+        value={},
+        confidence=0.95,
+        source=ProvenanceSource(doc_id="d_1", page=1, bbox=[1, 1, 2, 2], verbatim="Creatinine 2.4"),
+    )
+    unsaved = LabResult(analyte="Serum Creatinine", value=2.4, unit="mg/dL", provenance=envelope)
+    # Provisional before persistence, but never empty -- the UI keys on it.
+    assert unsaved.model_dump(mode="json")["sk"] == "LAB#serum_creatinine"
+
+    repo.create_lab_result(PATIENT, unsaved, timestamp="2026-09-19T10:00:00Z")
+    stored = repo.get_lab_results(PATIENT)[0]
+
+    assert stored.reported_at == "2026-09-19T10:00:00Z"
+    assert stored.model_dump(mode="json")["sk"] == "LAB#2026-09-19T10:00:00Z#serum_creatinine"
+
+
+def test_create_lab_result_does_not_mutate_the_caller(repo):
+    """Stamping the timestamp must not surprise the caller's object."""
+    from carethread.shared.schemas.lab_result import LabResult
+    from carethread.shared.schemas.provenance import ProvenanceEnvelope, ProvenanceSource
+
+    envelope = ProvenanceEnvelope(
+        field="lab_result",
+        value={},
+        confidence=0.95,
+        source=ProvenanceSource(doc_id="d_1", page=1, bbox=[1, 1, 2, 2], verbatim="v"),
+    )
+    original = LabResult(analyte="Potassium", value=5.9, unit="mmol/L", provenance=envelope)
+    returned = repo.create_lab_result(PATIENT, original, timestamp="2026-09-19T10:00:00Z")
+
+    assert original.reported_at is None
+    assert returned.reported_at == "2026-09-19T10:00:00Z"

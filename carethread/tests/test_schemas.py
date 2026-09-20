@@ -286,7 +286,7 @@ def test_valid_lab_result(valid_source):
         provenance=envelope
     )
     assert lab.pk("pat_001") == "PATIENT#pat_001"
-    assert lab.sk("2026-09-19T10:00:00Z") == "LAB#2026-09-19T10:00:00Z#serum_creatinine"
+    assert lab.sk_for("2026-09-19T10:00:00Z") == "LAB#2026-09-19T10:00:00Z#serum_creatinine"
     assert lab.flag == "high"
 
 

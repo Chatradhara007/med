@@ -6,7 +6,7 @@ SK = LAB#<iso_ts>#<analyte>
 """
 
 from typing import Any, Optional, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from .provenance import ProvenanceEnvelope
 
 
@@ -33,6 +33,13 @@ class LabResult(BaseModel):
         description="Normalised deviation from range: (value - ref_high) / (ref_high - ref_low) if high"
     )
     flag: Optional[str] = Field(default=None, description="Clinical alert flag: normal, high, low, critical")
+    reported_at: Optional[str] = Field(
+        default=None,
+        description=(
+            "ISO timestamp this result was recorded under. Forms part of the sort "
+            "key, so it is set by the repository on write and must not be edited."
+        ),
+    )
     provenance: ProvenanceEnvelope[Any] = Field(
         ...,
         description="Mandatory provenance citation proving this result was extracted from a verified lab report"
@@ -45,5 +52,20 @@ class LabResult(BaseModel):
     def pk(self, patient_id: str) -> str:
         return f"PATIENT#{patient_id}"
 
-    def sk(self, timestamp: str) -> str:
+    def sk_for(self, timestamp: str) -> str:
+        """Build the sort key for a given recording timestamp."""
         return f"LAB#{timestamp}#{self.normalise_analyte(self.analyte)}"
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def sk(self) -> str:
+        """Sort key, serialised so the UI can address this row.
+
+        Unlike the other entities the lab key embeds the recording timestamp,
+        which only exists once the row has been written. Before then this is a
+        provisional, analyte-scoped key: stable enough to use as a list key,
+        but not resolvable in storage.
+        """
+        if not self.reported_at:
+            return f"LAB#{self.normalise_analyte(self.analyte)}"
+        return self.sk_for(self.reported_at)

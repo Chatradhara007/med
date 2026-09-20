@@ -285,9 +285,11 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
         self._validate_patient_id(patient_id)
         self._validate_provenance("LabResult", lab_result)
         ts = timestamp or datetime.now(timezone.utc).isoformat()
+        # Stamping the timestamp makes the serialised `sk` the real storage key.
+        lab_result = lab_result.model_copy(update={"reported_at": ts})
         item = to_dynamodb_friendly(lab_result)
         item["PK"] = lab_result.pk(patient_id)
-        item["SK"] = lab_result.sk(ts)
+        item["SK"] = lab_result.sk_for(ts)
         try:
             self._table.put_item(Item=item)
             return lab_result

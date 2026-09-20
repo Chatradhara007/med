@@ -161,8 +161,10 @@ class InMemoryPatientRepository(PatientRepositoryInterface):
         self._validate_patient_id(patient_id)
         self._validate_provenance("LabResult", lab_result)
         ts = timestamp or datetime.now(timezone.utc).isoformat()
+        # Stamping the timestamp makes the serialised `sk` the real storage key.
+        lab_result = lab_result.model_copy(update={"reported_at": ts})
         pk = lab_result.pk(patient_id)
-        sk = lab_result.sk(ts)
+        sk = lab_result.sk_for(ts)
         self._table[(pk, sk)] = lab_result.model_dump()
         return lab_result
 

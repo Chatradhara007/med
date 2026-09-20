@@ -32,6 +32,10 @@ class Medication(BaseModel):
     duration_days: int = Field(..., ge=0, description="Duration in days")
     start_date: Optional[str] = Field(default=None, description="Start date ISO string")
     instructions: Optional[str] = Field(default=None, description="Specific instructions (e.g. after food)")
+    status: str = Field(
+        default="active",
+        description="Prescription state: 'active' or 'stopped'. Patient-editable per Section 9.2.",
+    )
     provenance: ProvenanceEnvelope[Any] = Field(
         ...,
         description="Mandatory provenance citation proving this prescription was extracted from a document"
