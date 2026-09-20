@@ -5,8 +5,16 @@ pydantic>=2.6.0
 PyYAML>=6.0.1
 jsonschema>=4.21.0
 pypdf>=4.0.0
-pillow>=10.2.0
 
-# The PDF rasteriser (pypdfium2) is deliberately not here: it ships in the
-# PdfRenderLayer attached to RasteriseFn alone, so the other functions do not
-# carry a PDF engine they never call. See carethread/infra/layers/pdf/.
+# Deliberately absent, and both are load-bearing decisions:
+#
+# pypdfium2 -- the PDF rasteriser ships in the PdfRenderLayer attached to
+#   RasteriseFn alone, so the other nine functions do not carry a PDF engine
+#   they never call. See carethread/infra/layers/pdf/.
+#
+# pillow -- only ever used to re-encode a camera photo, and the handler already
+#   falls back to storing the uploaded bytes unchanged when it is absent. Page
+#   images are encoded as PNG with the standard library. Keeping a compiled
+#   imaging dependency out of ten Lambda builds removes a whole class of
+#   failure: Pillow 12.3.0 shipped with no cp311 wheel, and `sam build` refuses
+#   to compile an sdist in the build container.

@@ -22,8 +22,8 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m pytest carethread/tests -q
 ```
 
-**248 passed** — 155 module/API tests, 32 ingest-pipeline tests, 25 hardening
-regression tests, 22 frontend-wiring tests, 14 rasterisation tests.
+**257 passed** — 155 module/API tests, 32 ingest-pipeline tests, 25 hardening
+regression tests, 25 frontend-wiring tests, 20 rasterisation tests.
 
 ## Real vs mocked dependencies
 
@@ -147,3 +147,8 @@ an unfinished path.
 Rasterisation ships in `PdfRenderLayer` (`infra/layers/pdf/`, pypdfium2),
 attached to `RasteriseFn` alone. Build with `sam build --use-container` on
 macOS or Windows or the wrong-platform wheel is packaged.
+
+No Lambda build installs a compiled imaging dependency: page images are
+encoded as PNG with the standard library. Pillow 12.3.0 shipped with no cp311
+wheel, `sam build` refused the sdist, and the build failed outright -- that
+class of failure is now impossible in the render path.

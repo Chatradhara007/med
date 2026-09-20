@@ -7,7 +7,7 @@ SK = PLAN#<day_index>#<slot>
 
 from enum import Enum
 from typing import Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from .provenance import ProvenanceEnvelope
 
 
@@ -36,7 +36,9 @@ class PlanEntry(BaseModel):
     def pk(self, patient_id: str) -> str:
         return f"PATIENT#{patient_id}"
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def sk(self) -> str:
+        """Sort key, serialised so the UI can address this row for PATCH."""
         slot_str = self.slot.value if isinstance(self.slot, SlotName) else str(self.slot)
         return f"PLAN#{self.day_index}#{slot_str}"

@@ -9,6 +9,8 @@ from __future__ import annotations
 import io
 import logging
 import os
+import struct
+import zlib
 from typing import Any, Dict, List, Optional
 
 from carethread.pipeline.common import (
@@ -39,6 +41,50 @@ def _encode_png(image: "Any") -> bytes:
     return buffer.getvalue()
 
 
+def _png_from_raw(
+    raw: bytes, width: int, height: int, stride: int, mode: str
+) -> bytes:
+    """Encode a raw pixel buffer as PNG using only the standard library.
+
+    Keeps the render path free of any compiled imaging dependency. Pillow ships
+    C extensions, and a release without a wheel for the Lambda runtime breaks
+    the whole build -- which is exactly what happened with Pillow 12.3.0.
+    """
+    channels = {"RGB": 3, "BGR": 3, "RGBA": 4, "BGRA": 4, "L": 1}.get(mode)
+    if channels is None:
+        raise UnsupportedDocumentError(f"Unsupported bitmap mode '{mode}'")
+
+    swap_rb = mode.startswith("BGR")
+    row_bytes = width * channels
+    colour_type = {1: 0, 3: 2, 4: 6}[channels]
+
+    rows = bytearray()
+    for y in range(height):
+        start = y * stride
+        row = bytearray(raw[start:start + row_bytes])
+        if swap_rb:
+            # PNG wants RGB; PDFium hands back BGR.
+            row[0::channels], row[2::channels] = row[2::channels], row[0::channels]
+        rows.append(0)  # filter type 0 (None)
+        rows += row
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data))
+            + tag
+            + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
+
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, colour_type, 0, 0, 0))
+        # Level 6 keeps a 150 DPI page well under a second while staying small.
+        + chunk(b"IDAT", zlib.compress(bytes(rows), 6))
+        + chunk(b"IEND", b"")
+    )
+
+
 def _render_with_pypdfium2(pdf_bytes: bytes) -> Optional[List[bytes]]:
     """Preferred renderer: permissively licensed, self-contained, fast."""
     try:
@@ -52,7 +98,15 @@ def _render_with_pypdfium2(pdf_bytes: bytes) -> Optional[List[bytes]]:
         pages = []
         for index in range(min(len(document), MAX_PAGES)):
             bitmap = document[index].render(scale=scale)
-            pages.append(_encode_png(bitmap.to_pil()))
+            pages.append(
+                _png_from_raw(
+                    bytes(bitmap.buffer),
+                    bitmap.width,
+                    bitmap.height,
+                    bitmap.stride,
+                    bitmap.mode,
+                )
+            )
         return pages
     finally:
         document.close()

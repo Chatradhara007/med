@@ -191,6 +191,10 @@ class RecordService:
 
         logger.info("Successfully updated %s.%s for patient %s", sk, field, patient_id)
 
+        # PK/SK are internal storage keys; the caller already supplied the sk
+        # and has no use for the partition key.
+        item = {k: v for k, v in item.items() if k not in ("PK", "SK")}
+
         provenance = item.get("provenance")
         status = (
             ProvenanceStatus(provenance["status"])

@@ -6,7 +6,7 @@ SK = MED#<normalised_name>
 """
 
 from typing import Any, Dict, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from .provenance import ProvenanceEnvelope
 
 
@@ -45,6 +45,12 @@ class Medication(BaseModel):
     def pk(self, patient_id: str) -> str:
         return f"PATIENT#{patient_id}"
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def sk(self) -> str:
+        """Sort key, serialised so the UI can address this row.
+
+        PATCH /record/{field} takes an `sk`. Without this the client would have
+        to reimplement normalise_name() to correct a needs_review chip.
+        """
         return f"MED#{self.normalise_name(self.name)}"

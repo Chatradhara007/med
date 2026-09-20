@@ -296,3 +296,78 @@ def test_user_pool_exposes_the_claims_the_bootstrap_reads():
 def test_template_outputs_everything_the_frontend_needs():
     outputs = set(_template()["Outputs"])
     assert {"ApiUrl", "UserPoolId", "ClientId", "HostedUiUrl"} <= outputs
+
+
+# ==================================================
+# 5. Entities must be addressable for PATCH
+# ==================================================
+
+def test_patchable_entities_expose_their_sort_key():
+    """GET /record must hand the client the `sk` that PATCH requires.
+
+    Without it the UI cannot resolve a needs_review chip on a medication or
+    diagnosis: it would have to reimplement the backend's key normalisation to
+    guess `MED#metformin`, and drift the moment that normalisation changes.
+    """
+    from carethread.shared.schemas.diagnosis import Diagnosis
+    from carethread.shared.schemas.medication import Medication
+    from carethread.shared.schemas.plan_entry import PlanEntry, SlotName
+    from carethread.shared.schemas.provenance import ProvenanceEnvelope, ProvenanceSource
+
+    envelope = ProvenanceEnvelope(
+        field="medication",
+        value={},
+        confidence=0.6,
+        source=ProvenanceSource(doc_id="d_1", page=1, bbox=[1, 1, 2, 2], verbatim="v"),
+    )
+
+    medication = Medication(
+        name="Metformin", salt="metformin hydrochloride", strength="500mg",
+        freq="BD", duration_days=30, provenance=envelope,
+    )
+    diagnosis = Diagnosis(label="Type 2 Diabetes", code_or_slug="t2dm", provenance=envelope)
+    entry = PlanEntry(
+        day_index=0, slot=SlotName.MORNING, action="Take Metformin",
+        med_ref="MED#metformin", provenance=envelope,
+    )
+
+    assert medication.model_dump(mode="json")["sk"] == "MED#metformin"
+    assert diagnosis.model_dump(mode="json")["sk"] == "DIAG#t2dm"
+    assert entry.model_dump(mode="json")["sk"] == "PLAN#0#morning"
+
+
+def test_serialised_sk_round_trips_through_the_repository(repo):
+    """The extra key must not break reads back out of storage."""
+    from carethread.shared.schemas.medication import Medication
+    from carethread.shared.schemas.provenance import ProvenanceEnvelope, ProvenanceSource
+
+    envelope = ProvenanceEnvelope(
+        field="medication",
+        value={},
+        confidence=0.95,
+        source=ProvenanceSource(doc_id="d_1", page=1, bbox=[1, 1, 2, 2], verbatim="v"),
+    )
+    repo.create_medication(
+        PATIENT,
+        Medication(
+            name="Metformin", salt="metformin hydrochloride", strength="500mg",
+            freq="BD", duration_days=30, provenance=envelope,
+        ),
+    )
+    assert repo.get_medications(PATIENT)[0].sk == "MED#metformin"
+
+
+def test_patch_response_hides_internal_storage_keys(service, repo):
+    """PK/SK are storage internals, not part of the API surface."""
+    repo.create_patient(
+        Patient(patient_id=PATIENT, name="Anil", age=64, sex="M", phone="+919876543210")
+    )
+    from carethread.shared.schemas.api import RecordFieldPatchRequest
+
+    response = service.patch_record_field(
+        PATIENT, RecordFieldPatchRequest(sk="PROFILE", field="age", value=70)
+    )
+
+    assert response.updated_item["age"] == 70
+    assert "PK" not in response.updated_item
+    assert "SK" not in response.updated_item
