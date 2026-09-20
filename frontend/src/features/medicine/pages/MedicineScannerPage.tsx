@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { createDocument, uploadToS3, getDocument, TERMINAL_STATUSES } from '../../../api/documents';
-import { submitSubstitution } from '../../../api/medicine';
+import {
+  createDocument,
+  uploadToS3,
+  pollDocumentUntilTerminal,
+} from '../../../api/documents'; import { submitSubstitution } from '../../../api/medicine';
 import { CameraCapture } from '../components/CameraCapture';
 import '../Medicine.css';
 
@@ -46,17 +49,20 @@ export const MedicineScannerPage = () => {
       setStep('processing');
       setStepMessage('Analysing medicine image...');
 
-      let finalDoc = await getDocument(doc_id);
-      let attempts = 0;
-      while (!TERMINAL_STATUSES.has(finalDoc.status) && attempts < 40) {
-        await new Promise((r) => setTimeout(r, 3000));
-        finalDoc = await getDocument(doc_id);
-        attempts++;
-      }
+      const finalDoc = await pollDocumentUntilTerminal(
+        doc_id,
+        3000,
+        180, // up to ~9 minutes
+      );
 
       if (finalDoc.status === 'failed' || finalDoc.status === 'unsupported') {
-        throw new Error(finalDoc.errorReason || `Document processing ${finalDoc.status}.`);
+        throw new Error(
+          finalDoc.errorReason ||
+          `Document processing ${finalDoc.status}.`
+        );
       }
+
+
 
       // Step 4: Submit substitution with doc_id
       setStep('submitting');

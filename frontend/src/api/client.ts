@@ -18,7 +18,6 @@ import type {
  */
 export interface CareThreadApi {
   getRecord(): Promise<PatientRecord>;
-  updateRecord(req: Record<string, string | number | boolean>): Promise<void>;
   updateRecordField(req: UpdateRecordFieldRequest): Promise<void>;
   getDocument(id: string): Promise<DocumentMetadata>;
   createDocument(req: CreateDocumentRequest): Promise<CreateDocumentResponse>;

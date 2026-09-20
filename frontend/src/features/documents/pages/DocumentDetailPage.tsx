@@ -15,26 +15,27 @@ import '../Documents.css';
 
 // ─── Build ExtractedFields from canonical record filtered by doc_id ───────────
 
+function normaliseKeyPart(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+function medicationSk(name: string): string {
+  return `MED#${normaliseKeyPart(name)}`;
+}
+
+function diagnosisSk(codeOrSlug: string | undefined, label: string): string {
+  return `DIAG#${normaliseKeyPart(codeOrSlug || label)}`;
+}
+
+
 function buildExtractedFields(
   record: PatientRecord,
   docId: string
 ): ExtractedField<Record<string, unknown>>[] {
   const fields: ExtractedField<Record<string, unknown>>[] = [];
-
-  function normaliseKeyPart(value: string): string {
-    return value
-      .trim()
-      .toLowerCase()
-      .replace(/[\s-]+/g, '_');
-  }
-
-  function medicationSk(name: string): string {
-    return `MED#${normaliseKeyPart(name)}`;
-  }
-
-  function diagnosisSk(codeOrSlug: string | undefined, label: string): string {
-    return `DIAG#${normaliseKeyPart(codeOrSlug || label)}`;
-  }
 
   for (const med of record.activeMedications) {
     if (med.provenance?.source.doc_id !== docId) continue;

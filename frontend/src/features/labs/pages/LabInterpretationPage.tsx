@@ -4,7 +4,12 @@ import type { LabInterpretationReport, LabFinding } from '../../../types/api';
 import { interpretLabs } from '../../../api/labs';
 
 const FindingCard = ({ finding }: { finding: LabFinding }) => {
-  const isAbnormal = finding.status && finding.status !== 'normal';
+  const isAbnormal =
+    finding.status === 'below' ||
+    finding.status === 'above' ||
+    finding.status === 'high' ||
+    finding.status === 'low' ||
+    finding.status === 'critical';
   const refRange = finding.ref_low != null && finding.ref_high != null
     ? `${finding.ref_low} – ${finding.ref_high} ${finding.unit || ''}`
     : null;
@@ -18,7 +23,9 @@ const FindingCard = ({ finding }: { finding: LabFinding }) => {
         </div>
         {finding.status && (
           <span className={`finding-status-badge ${finding.status}`}>
-            {finding.status.toUpperCase()}
+            {finding.status === 'within'
+              ? 'NORMAL'
+              : finding.status.toUpperCase()}
           </span>
         )}
       </div>

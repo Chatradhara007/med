@@ -17,9 +17,9 @@ function getEditableFields(category: string): string[] {
     case 'medication':
       return ['strength', 'freq', 'instructions', 'duration_days', 'status'];
     case 'diagnosis':
-      return ['code_or_slug', 'status', 'notes', 'display_name'];
+      return ['status', 'notes', 'display_name'];
     case 'lab_result':
-      return ['value', 'unit', 'flag'];
+      return [];
     case 'follow_up':
       return ['instruction', 'timeframe'];
     default:
@@ -32,11 +32,26 @@ function getEditableFields(category: string): string[] {
  * (The frontend stores some fields under different keys than the backend.)
  */
 function frontendKeyToBackendField(category: string, key: string): string {
-  if (category === 'medication' && key === 'frequency') return 'freq';
-  if (category === 'medication' && key === 'duration') return 'duration_days';
-  if (category === 'diagnosis' && key === 'condition') return 'label';
-  if (category === 'diagnosis' && key === 'icd10') return 'icd_hint';
-  if (category === 'lab_result' && key === 'test') return 'analyte';
+  if (category === 'medication' && key === 'frequency') {
+    return 'freq';
+  }
+
+  if (category === 'medication' && key === 'duration') {
+    return 'duration_days';
+  }
+
+  if (category === 'diagnosis' && key === 'condition') {
+    return 'label';
+  }
+
+  if (category === 'diagnosis' && key === 'icd10') {
+    return 'icd_hint';
+  }
+
+  if (category === 'lab_result' && key === 'test') {
+    return 'analyte';
+  }
+
   return key;
 }
 

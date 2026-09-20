@@ -37,7 +37,7 @@ export const TERMINAL_STATUSES = new Set([
  * Returns the final DocumentMetadata.
  * @param id - doc_id
  * @param intervalMs - polling interval (default 3000)
- * @param maxAttempts - max polls before giving up (default 60 = 3 min)
+ * @param maxAttempts - max polls before giving up
  */
 export const pollDocumentUntilTerminal = async (
   id: string,

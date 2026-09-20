@@ -27,10 +27,13 @@ export interface BackendPlanEntry {
 
 /** Backend Alert */
 export interface BackendAlert {
-  id?: string;
-  message: string;
+  alert_id: string;
+  rule_id: string;
   severity: 'info' | 'warning' | 'high' | 'critical';
-  source?: string;
+  message: string;
+  fired_at: string;
+  acknowledged: boolean;
+  cross_module_context?: Record<string, unknown>;
 }
 
 /** Backend Medication entity */
@@ -101,8 +104,13 @@ export interface BackendDocumentDetail {
   doc_id: string;
   status: BackendDocumentStatus;
   type?: string;
-  pages?: number;
+
+  // Backend returns the actual S3 page keys.
+  pages?: string[];
+
+  // Backend returns short-lived presigned GET URLs.
   page_urls?: string[];
+
   error?: string;
 }
 
@@ -223,7 +231,7 @@ export interface DocumentMetadata {
   created_at?: string;
   updated_at?: string;
   // Only available from GET /documents/{id}
-  pages?: number;
+  pages?: number | string[];
   page_urls?: string[];
   errorReason?: string; // mapped from error
 }

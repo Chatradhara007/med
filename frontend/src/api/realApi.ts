@@ -69,11 +69,11 @@ function adaptRecord(raw: BackendPatientRecord): PatientRecord {
     phone: raw.patient.phone,
   };
 
-  const alerts: Alert[] = (raw.alerts || []).map((a, i) => ({
-    id: a.id || `alert_${i}`,
+  const alerts: Alert[] = (raw.alerts || []).map((a) => ({
+    id: a.alert_id,
     message: a.message,
     severity: a.severity,
-    source: a.source,
+    source: a.rule_id,
   }));
 
   const carePlan: CarePlanItem[] = (raw.plan_entries || []).map((e) => ({
@@ -169,13 +169,6 @@ export const realApi = {
   getRecord: async (): Promise<PatientRecord> => {
     const raw = (await fetchWithAuth('/record')) as BackendPatientRecord;
     return adaptRecord(raw);
-  },
-
-  updateRecord: async (req: Record<string, string | number | boolean>): Promise<void> => {
-    await fetchWithAuth('/record', {
-      method: 'PATCH',
-      body: JSON.stringify(req),
-    });
   },
 
   updateRecordField: async (req: UpdateRecordFieldRequest): Promise<void> => {

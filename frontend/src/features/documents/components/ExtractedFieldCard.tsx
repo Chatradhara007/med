@@ -51,11 +51,13 @@ export const ExtractedFieldCard = ({ field, onShowOriginal, onRefresh, isActiveS
           Show original
         </button>
 
-        {field.status === 'needs_review' && !isReviewing && (
-          <button className="btn-review" onClick={() => setIsReviewing(true)}>
-            Review &amp; Correct
-          </button>
-        )}
+        {field.status === 'needs_review' &&
+          field.category !== 'lab_result' &&
+          !isReviewing && (
+            <button className="btn-review" onClick={() => setIsReviewing(true)}>
+              Review &amp; Correct
+            </button>
+          )}
       </div>
 
       {isReviewing && (
