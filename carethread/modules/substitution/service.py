@@ -48,6 +48,32 @@ def _default_extraction_adapter() -> Optional[MedicineExtractionAdapterInterface
     return MockMedicineExtractionAdapter()
 
 
+# Common international / global brand to active salt aliases
+COMMON_BRAND_ALIASES = {
+    "lipitor": "atorvastatin",
+    "glucophage": "metformin hydrochloride",
+    "plavix": "clopidogrel",
+    "norvasc": "amlodipine",
+    "zocor": "simvastatin",
+    "crestor": "rosuvastatin",
+    "tylenol": "paracetamol",
+    "panadol": "paracetamol",
+    "calpol": "paracetamol",
+    "crocin": "paracetamol",
+    "dolo": "paracetamol",
+    "nexium": "esomeprazole",
+    "prilosec": "omeprazole",
+    "zithromax": "azithromycin",
+    "augmentin": "amoxicillin clavulanate",
+    "lasix": "furosemide",
+    "coumadin": "warfarin",
+    "synthroid": "levothyroxine",
+    "lanoxin": "digoxin",
+    "ventolin": "salbutamol",
+    "dilantin": "phenytoin",
+}
+
+
 class SubstitutionService:
     """Core domain service for evaluating pharmacy drug substitutions."""
 
@@ -126,7 +152,13 @@ class SubstitutionService:
             detected_form = form or "tablet"
             detected_mfg = None
 
-            # If salt not provided, attempt catalog resolution
+            clean_brand = detected_brand.strip().lower()
+
+            # A. Check known international / common brand aliases
+            if not detected_salt and clean_brand in COMMON_BRAND_ALIASES:
+                detected_salt = COMMON_BRAND_ALIASES[clean_brand]
+
+            # B. Attempt brand lookup in formulary
             if not detected_salt and detected_brand:
                 catalog_entry = self.drug_index.find_by_brand(detected_brand)
                 if catalog_entry:
@@ -136,6 +168,16 @@ class SubstitutionService:
                     if not form:
                         detected_form = catalog_entry.form
                     detected_mfg = catalog_entry.manufacturer
+
+            # C. Check if user input is an active chemical salt (e.g. 'Metformin', 'Atorvastatin', 'Paracetamol')
+            if not detected_salt and detected_brand:
+                salt_matches = self.drug_index.find_by_salt(detected_brand)
+                if salt_matches:
+                    detected_salt = salt_matches[0].salt
+                    if not detected_strength:
+                        detected_strength = f"{salt_matches[0].strength_mg:g}mg"
+                    if not form:
+                        detected_form = salt_matches[0].form
 
             num_strength = parse_numeric_strength(detected_strength)
 

@@ -71,11 +71,16 @@ export const MedicineScannerPage = () => {
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualBrand && !manualStrength) return;
+    if (!manualBrand.trim()) return;
     try {
       setManualLoading(true);
       setError(null);
-      const result = await submitSubstitution({ brand: manualBrand, strength: manualStrength });
+      let strengthToSend = manualStrength.trim();
+      if (!strengthToSend) {
+        const numMatch = manualBrand.match(/\d+(?:\.\d+)?\s*(?:mg|g|mcg)?/i);
+        strengthToSend = numMatch ? (numMatch[0].toLowerCase().includes('mg') ? numMatch[0] : `${numMatch[0]}mg`) : 'standard';
+      }
+      const result = await submitSubstitution({ brand: manualBrand.trim(), strength: strengthToSend });
       navigate('/medicine/result', { state: { result } });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to check substitution.';
