@@ -53,4 +53,9 @@ __pycache__/
 *$py.class
 .pytest_cache/
 *.log
-.aws-sam/
+.aws-sam/
+
+# `sam deploy --guided` writes every answered parameter here in plaintext,
+# GroqApiKey included. NoEcho keeps it out of CloudFormation's console output
+# but not out of this file, so it must never be committed.
+samconfig.toml
