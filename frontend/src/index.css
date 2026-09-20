@@ -1,39 +1,40 @@
 /* CareThread Clinical Design System & Foundation */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
 
 :root {
   /* Typography */
   --ct-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --ct-font-heading: 'Playfair Display', serif;
   --ct-line-height-tight: 1.25;
   --ct-line-height-normal: 1.5;
   --ct-line-height-relaxed: 1.625;
 
-  /* Surfaces & Canvas (High-Trust Medical Dark Theme by Default) */
-  --ct-canvas: #090d16;
-  --ct-surface: #0f172a;
-  --ct-surface-elevated: #1e293b;
-  --ct-surface-overlay: #1e293b;
-  --ct-surface-subtle: rgba(255, 255, 255, 0.03);
+  /* Surfaces & Canvas (Salt and Pepper Theme) */
+  --ct-canvas: #FFFFFF;
+  --ct-surface: #D4D4D4;
+  --ct-surface-elevated: #FFFFFF;
+  --ct-surface-overlay: #FFFFFF;
+  --ct-surface-subtle: rgba(43, 43, 43, 0.05);
 
   /* Borders & Dividers */
-  --ct-border: rgba(255, 255, 255, 0.09);
-  --ct-border-subtle: rgba(255, 255, 255, 0.05);
-  --ct-border-hover: rgba(255, 255, 255, 0.18);
-  --ct-border-focus: #3b82f6;
+  --ct-border: #B3B3B3;
+  --ct-border-subtle: rgba(179, 179, 179, 0.5);
+  --ct-border-hover: #2B2B2B;
+  --ct-border-focus: #2B2B2B;
 
   /* Typography Colors */
-  --ct-text-primary: #f8fafc;
-  --ct-text-secondary: #94a3b8;
-  --ct-text-muted: #64748b;
-  --ct-text-inverse: #0f172a;
+  --ct-text-primary: #2B2B2B;
+  --ct-text-secondary: rgba(43, 43, 43, 0.7);
+  --ct-text-muted: rgba(43, 43, 43, 0.5);
+  --ct-text-inverse: #FFFFFF;
 
-  /* Primary Brand - Medical Sapphire */
-  --ct-primary: #2563eb;
-  --ct-primary-hover: #1d4ed8;
-  --ct-primary-active: #1e40af;
-  --ct-primary-subtle: rgba(37, 99, 235, 0.12);
-  --ct-primary-border: rgba(37, 99, 235, 0.3);
-  --ct-primary-glow: rgba(37, 99, 235, 0.25);
+  /* Primary Brand - Salt and pepper */
+  --ct-primary: #2B2B2B;
+  --ct-primary-hover: #000000;
+  --ct-primary-active: #000000;
+  --ct-primary-subtle: rgba(43, 43, 43, 0.12);
+  --ct-primary-border: rgba(43, 43, 43, 0.3);
+  --ct-primary-glow: rgba(43, 43, 43, 0.15);
 
   /* Accents */
   --ct-teal: #0d9488;
@@ -85,10 +86,10 @@
   --ct-radius-pill: 9999px;
 
   /* Shadows & Depth */
-  --ct-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.25);
-  --ct-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
-  --ct-shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.45), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
-  --ct-shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--ct-border);
+  --ct-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --ct-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --ct-shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+  --ct-shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px var(--ct-border);
   --ct-shadow-glow: 0 0 25px -5px var(--ct-primary-glow);
 
   /* Transitions */
@@ -113,6 +114,10 @@ html, body {
   line-height: var(--ct-line-height-normal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6, .ct-card-title, .brand-name {
+  font-family: var(--ct-font-heading);
 }
 
 #root {
@@ -168,7 +173,7 @@ html, body {
   width: 28px;
   height: 28px;
   border-radius: var(--ct-radius-md);
-  background: linear-gradient(135deg, var(--ct-primary) 0%, #38bdf8 100%);
+  background: var(--ct-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -251,7 +256,7 @@ html, body {
 
 .nav-link-item.active {
   background-color: var(--ct-primary-subtle);
-  color: #60a5fa;
+  color: var(--ct-primary);
   border-color: var(--ct-primary-border);
   font-weight: 600;
 }
@@ -268,7 +273,7 @@ html, body {
 
 .nav-link-item.active .nav-icon {
   opacity: 1;
-  color: #60a5fa;
+  color: var(--ct-primary);
 }
 
 .sidebar-footer {
@@ -319,7 +324,7 @@ html, body {
 /* Top App Header */
 .app-topbar {
   height: 60px;
-  background-color: rgba(15, 23, 42, 0.85);
+  background-color: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--ct-border);
   display: flex;
@@ -488,7 +493,7 @@ html, body {
   background: linear-gradient(
     90deg,
     var(--ct-surface-elevated) 0%,
-    rgba(255, 255, 255, 0.07) 50%,
+    rgba(0, 0, 0, 0.07) 50%,
     var(--ct-surface-elevated) 100%
   );
   background-size: 200% 100%;
@@ -529,7 +534,7 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  background: var(--ct-primary);
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.15);
   padding: 10px 20px;
@@ -543,7 +548,7 @@ html, body {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #60a5fa 0%, #1d4ed8 100%);
+  background: var(--ct-primary-hover);
   box-shadow: 0 4px 14px var(--ct-primary-glow);
   transform: translateY(-1px);
 }
@@ -595,7 +600,7 @@ html, body {
     left: 0;
     right: 0;
     height: 64px;
-    background-color: rgba(15, 23, 42, 0.95);
+    background-color: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(16px);
     border-top: 1px solid var(--ct-border);
     z-index: 50;
@@ -617,7 +622,7 @@ html, body {
   }
 
   .mobile-nav-item.active {
-    color: #60a5fa;
+    color: var(--ct-primary);
   }
 
   .workspace-content {
@@ -640,7 +645,7 @@ html, body {
   flex-direction: column;
   justify-content: space-between;
   padding: 48px 56px;
-  background: linear-gradient(145deg, #090e1a 0%, #0f172a 100%);
+  background: var(--ct-surface);
   border-right: 1px solid var(--ct-border);
   position: relative;
   overflow: hidden;

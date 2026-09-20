@@ -1,7 +1,7 @@
 /* Patient Profile & Demographics Styling */
 
 .patient-info-card {
-  background: linear-gradient(145deg, var(--ct-surface) 0%, #1e293b 100%) !important;
+  background: var(--ct-surface) !important;
   border: 1px solid var(--ct-border) !important;
   border-radius: var(--ct-radius-lg) !important;
   padding: 24px !important;
@@ -15,7 +15,7 @@
 .avatar-placeholder {
   width: 64px;
   height: 64px;
-  background: linear-gradient(135deg, var(--ct-primary) 0%, #38bdf8 100%);
+  background: var(--ct-primary);
   color: white;
   border-radius: 50%;
   display: flex;
