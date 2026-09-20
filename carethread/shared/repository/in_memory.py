@@ -136,8 +136,8 @@ class InMemoryPatientRepository(PatientRepositoryInterface):
         self,
         patient_id: str,
         sk: str,
-        field: str,
-        value: Any,
+        field: Optional[str] = None,
+        value: Any = None,
         confirm_provenance: bool = True,
     ) -> Dict[str, Any]:
         self._validate_patient_id(patient_id)
@@ -148,7 +148,8 @@ class InMemoryPatientRepository(PatientRepositoryInterface):
                 f"Record entity with SK '{sk}' not found for patient '{patient_id}'"
             )
         updated = dict(item)
-        updated[field] = value
+        if field is not None:
+            updated[field] = value
         updated["updated_at"] = datetime.now(timezone.utc).isoformat()
         if confirm_provenance and isinstance(updated.get("provenance"), dict):
             provenance = dict(updated["provenance"])

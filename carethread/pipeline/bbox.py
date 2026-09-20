@@ -80,7 +80,12 @@ class TextLayer:
         targets = [w for w in normalise(verbatim).split(" ") if w]
         if not targets:
             return None
-        matched = [w for w in words if normalise(str(w.get("text", ""))) in targets]
+
+        # Match the contiguous run of words, not every word that happens to
+        # appear in the verbatim. Unioning scattered matches would stretch the
+        # box across the whole page and defeat the point of having geometry:
+        # "30 days" occurs beside every medication on a discharge summary.
+        matched = _best_window(words, targets)
         if not matched:
             return None
 
@@ -94,6 +99,52 @@ class TextLayer:
             return None
 
         return _clamp([min(ymins), min(xmins), max(ymaxs), max(xmaxs)])
+
+
+def _best_window(
+    words: Sequence[Dict[str, Any]], targets: Sequence[str]
+) -> List[Dict[str, Any]]:
+    """Return the run of words that best covers ``targets``.
+
+    Slides a window the length of the verbatim across the page and keeps the
+    one overlapping it most. A window rather than an exact match because the
+    text layer's word split rarely lines up with the model's transcription --
+    punctuation attaches differently, and ligatures split. Requiring an exact
+    sequence would reject almost every real line; requiring a majority keeps
+    the box tight without being brittle.
+    """
+    if not words or not targets:
+        return []
+
+    wanted = set(targets)
+    size = len(targets)
+    normalised = [normalise(str(w.get("text", ""))) for w in words]
+
+    best_key: Tuple[int, int] = (0, 0)
+    best_start = -1
+    for start in range(max(1, len(words) - size + 1)):
+        window = normalised[start : start + size]
+        # Rank on how many words sit at the *same offset* as in the verbatim,
+        # falling back to plain membership. Membership alone ties every window
+        # that merely overlaps the phrase, and the earliest such window wins --
+        # which on a medication list is the one straddling two prescriptions,
+        # since "x 30 days" ends each of them.
+        aligned = sum(1 for token, target in zip(window, targets) if token == target)
+        present = sum(1 for token in window if token in wanted)
+        key = (aligned, present)
+        if key > best_key:
+            best_key, best_start = key, start
+
+    # Fewer than half the words in place is not a location, it is a coincidence.
+    if best_start < 0 or best_key[1] * 2 < size:
+        return []
+    return [
+        w
+        for w, token in zip(
+            words[best_start : best_start + size], normalised[best_start : best_start + size]
+        )
+        if token in wanted
+    ]
 
 
 def _clamp(bbox: Sequence[float]) -> List[float]:
@@ -130,12 +181,101 @@ def derive_source_location(
     return page, bbox, True
 
 
+def _words_from_pdfium(pdf_bytes: bytes) -> Optional[Tuple[List[str], List[List[Dict[str, Any]]]]]:
+    """Extract page text *and* per-word geometry with PDFium.
+
+    ``find_bbox`` needs word geometry, and nothing else in the pipeline
+    produced any: the only TextLayer built in production came from page text
+    alone, so every citation degraded to a full-page box no matter how clean
+    the extraction was. PDFium already ships in the render layer and exposes a
+    box per character, so words can be reassembled with no new dependency.
+
+    Character boxes are ``(left, bottom, right, top)`` in PDF points with the
+    origin at the bottom-left. Provenance boxes are ``[ymin, xmin, ymax, xmax]``
+    on a 0-1000 grid with the origin at the *top* left, so Y is flipped here.
+    """
+    try:
+        import pypdfium2 as pdfium
+    except ImportError:
+        logger.info("pypdfium2 unavailable; falling back to text-only extraction")
+        return None
+
+    try:
+        document = pdfium.PdfDocument(pdf_bytes)
+    except Exception as exc:
+        logger.warning("PDFium could not open the document: %s", exc)
+        return None
+
+    page_texts: List[str] = []
+    word_boxes: List[List[Dict[str, Any]]] = []
+
+    try:
+        for page in document:
+            text_page = page.get_textpage()
+            width = float(page.get_width()) or 1.0
+            height = float(page.get_height()) or 1.0
+            page_texts.append(text_page.get_text_range() or "")
+
+            words: List[Dict[str, Any]] = []
+            current: List[str] = []
+            bounds: Optional[List[float]] = None
+
+            def flush() -> None:
+                if current and bounds:
+                    words.append(
+                        {
+                            "text": "".join(current),
+                            "ymin": (height - bounds[3]) / height * 1000.0,
+                            "xmin": bounds[0] / width * 1000.0,
+                            "ymax": (height - bounds[1]) / height * 1000.0,
+                            "xmax": bounds[2] / width * 1000.0,
+                        }
+                    )
+
+            for index in range(text_page.count_chars()):
+                char = text_page.get_text_range(index, 1)
+                if not char or char.isspace():
+                    flush()
+                    current, bounds = [], None
+                    continue
+                try:
+                    left, bottom, right, top = text_page.get_charbox(index)
+                except Exception:
+                    continue
+                current.append(char)
+                if bounds is None:
+                    bounds = [left, bottom, right, top]
+                else:
+                    bounds = [
+                        min(bounds[0], left),
+                        min(bounds[1], bottom),
+                        max(bounds[2], right),
+                        max(bounds[3], top),
+                    ]
+            flush()
+            word_boxes.append(words)
+    except Exception as exc:
+        logger.warning("PDFium text-layer walk failed: %s", exc)
+        return None
+
+    return page_texts, word_boxes
+
+
 def extract_pdf_text_layer(pdf_bytes: bytes) -> Optional[TextLayer]:
     """Pull the text layer out of a PDF, when it has one.
 
-    Scanned PDFs carry no text layer; that is expected and simply means
-    citations fall back to page-level highlights.
+    Scanned PDFs and camera photos carry no text layer; that is expected and
+    simply means citations fall back to page-level highlights.
     """
+    extracted = _words_from_pdfium(pdf_bytes)
+    if extracted:
+        pages, words = extracted
+        if any(p.strip() for p in pages):
+            return TextLayer(page_texts=pages, word_boxes=words)
+
+    # PDFium is the preferred source because it carries geometry. pypdf remains
+    # as a text-only fallback so a document PDFium cannot parse still yields a
+    # page attribution rather than nothing at all.
     try:
         from pypdf import PdfReader
     except ImportError:

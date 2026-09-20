@@ -65,8 +65,8 @@ class PatientRepositoryInterface(ABC):
         self,
         patient_id: str,
         sk: str,
-        field: str,
-        value: Any,
+        field: Optional[str] = None,
+        value: Any = None,
         confirm_provenance: bool = True,
     ) -> Dict[str, Any]:
         """Apply a single allowlisted field update to one entity in the partition.
@@ -74,6 +74,9 @@ class PatientRepositoryInterface(ABC):
         Callers are responsible for allowlist enforcement; this method performs
         the targeted, non-destructive write and returns the updated raw item.
         Resolving a needs_review chip transitions provenance to confirmed.
+
+        ``field`` may be omitted to confirm an entity whose extracted values are
+        already correct, which is the common way a chip gets resolved.
         """
         pass
 

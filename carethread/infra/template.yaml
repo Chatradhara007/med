@@ -185,7 +185,10 @@ Resources:
     Type: AWS::Serverless::HttpApi
     Properties:
       CorsConfiguration:
-        AllowMethods: [GET, POST, PATCH, OPTIONS]
+        # DELETE belongs here as well as on the route: the browser preflights
+        # DELETE, and a preflight that does not list it is rejected before the
+        # real request is ever sent.
+        AllowMethods: [GET, POST, PATCH, DELETE, OPTIONS]
         AllowHeaders: [Authorization, Content-Type]
         AllowOrigins: [!Ref WebOrigin]
       Auth:
@@ -267,6 +270,18 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /documents/{id}
             Method: GET
+        # The handler and router have supported DELETE since deletion was
+        # added, but the route was never declared here, so API Gateway had
+        # nothing to forward. Declaring it as a SAM event also creates the
+        # lambda:InvokeFunction permission for this route -- a route added by
+        # hand in the console has no such permission and fails with a bare
+        # "Internal Server Error" before the function is ever entered.
+        DeleteDoc:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /documents/{id}
+            Method: DELETE
 
   RecordApiFn:
     Type: AWS::Serverless::Function
@@ -369,8 +384,11 @@ Resources:
 
   # 8. M1 Ingest Pipeline Lambdas
 
-  # Carried by RasteriseFn alone; the other functions have no use for a PDF
-  # engine and should not pay its size.
+  # Carried by the three functions that open a PDF: RasteriseFn to render the
+  # pages, and ExtractFn / ValidateFn to read the text layer. Those two need it
+  # for the *word geometry* PDFium exposes -- pypdf alone yields page text with
+  # no coordinates, which silently degrades every citation to a whole-page box.
+  # The remaining functions never open a PDF and should not pay its size.
   PdfRenderLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
@@ -417,6 +435,10 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: carethread.pipeline.extract.app.handler
+      # Needed for PDFium's per-character geometry, which is what turns a
+      # citation into a tight overlay instead of a whole-page highlight.
+      Layers:
+        - !Ref PdfRenderLayer
       Timeout: 180
       MemorySize: 2048
       Environment:
@@ -436,6 +458,10 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: carethread.pipeline.validate.app.handler
+      # Needed for PDFium's per-character geometry, which is what turns a
+      # citation into a tight overlay instead of a whole-page highlight.
+      Layers:
+        - !Ref PdfRenderLayer
       Timeout: 180
       MemorySize: 2048
       Environment:

@@ -264,12 +264,24 @@ def test_template_defines_the_pdf_layer():
     assert layer["Metadata"]["BuildMethod"] == "python3.11"
 
 
-def test_layer_is_attached_to_the_rasteriser_and_nothing_else():
+#: The functions that open a PDF. RasteriseFn renders the pages; ExtractFn and
+#: ValidateFn read the text layer, and need PDFium specifically for the
+#: per-character geometry pypdf does not expose -- without it every citation
+#: degrades to a whole-page box. Nothing else opens a PDF, and nothing else
+#: should pay the layer's size.
+PDF_FUNCTIONS = {"RasteriseFn", "ExtractFn", "ValidateFn"}
+
+
+def test_layer_is_attached_to_exactly_the_functions_that_open_a_pdf():
     resources = _template()["Resources"]
-    assert resources["RasteriseFn"]["Properties"]["Layers"] == ["PdfRenderLayer"]
+
+    for name in PDF_FUNCTIONS:
+        assert resources[name]["Properties"]["Layers"] == ["PdfRenderLayer"], (
+            f"{name} opens a PDF and needs the render layer"
+        )
 
     for name, resource in resources.items():
-        if name == "RasteriseFn" or resource.get("Type") != "AWS::Serverless::Function":
+        if name in PDF_FUNCTIONS or resource.get("Type") != "AWS::Serverless::Function":
             continue
         assert "Layers" not in resource["Properties"], (
             f"{name} should not carry the PDF engine"

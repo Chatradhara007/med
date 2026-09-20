@@ -78,18 +78,29 @@ def _build_envelope(
         # The one invariant: no value reaches the UI without a source.
         raise ValueError("entity carries no verbatim source citation")
 
+    bbox_exact = bool(obj.get("_bbox_exact", True))
     source = ProvenanceSource(
         doc_id=str(source_raw.get("doc_id", "")).strip(),
         page=int(source_raw.get("page", 1) or 1),
         bbox=[float(c) for c in (source_raw.get("bbox") or [0.0, 0.0, 1000.0, 1000.0])],
         verbatim=verbatim,
+        bbox_exact=bbox_exact,
     )
 
     status = evaluate_confidence(confidence)
-    if degraded or not obj.get("_bbox_exact", True):
-        # A page-level citation or an unstated field is not confirmable on its
-        # own; the patient resolves it in the UI.
+    if degraded:
+        # An unstated contract-required field is never confirmable: the value
+        # reads "not stated" and only the patient can supply it.
         status = ProvenanceStatus.NEEDS_REVIEW
+
+    # A coarse bbox deliberately does NOT force review. It used to, and that
+    # made `confirmed` unreachable in practice: the only production TextLayer
+    # carried no word geometry, so every citation was page-level and every
+    # entity came back amber whatever its confidence -- which made the amber
+    # chip meaningless and left the patient no way to clear one. The citation
+    # is still complete without a tight box (quote plus page), so confidence
+    # governs the status and `source.bbox_exact` tells the UI to render a
+    # page-level citation instead of an overlay.
 
     envelope = ProvenanceEnvelope(
         field=field,

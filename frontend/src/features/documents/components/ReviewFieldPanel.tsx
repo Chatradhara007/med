@@ -28,31 +28,36 @@ function getEditableFields(category: string): string[] {
 }
 
 /**
- * Maps frontend field names to backend field names for the PATCH payload.
- * (The frontend stores some fields under different keys than the backend.)
+ * Backend field name -> the key the adapter stores it under on `field.value`.
+ *
+ * `getEditableFields` returns *backend* names, but `field.value` is built by
+ * the record adapter using *frontend* names. Looking one up in the other needs
+ * this direction. It used to map the other way, so `freq` and `duration_days`
+ * resolved to themselves, found nothing on the value object, and were dropped
+ * from the form -- frequency and duration silently became uneditable.
  */
-function frontendKeyToBackendField(category: string, key: string): string {
-  if (category === 'medication' && key === 'frequency') {
-    return 'freq';
+function backendFieldToValueKey(category: string, field: string): string {
+  if (category === 'medication' && field === 'freq') {
+    return 'frequency';
   }
 
-  if (category === 'medication' && key === 'duration') {
-    return 'duration_days';
+  if (category === 'medication' && field === 'duration_days') {
+    return 'duration';
   }
 
-  if (category === 'diagnosis' && key === 'condition') {
-    return 'label';
+  if (category === 'diagnosis' && field === 'label') {
+    return 'condition';
   }
 
-  if (category === 'diagnosis' && key === 'icd10') {
-    return 'icd_hint';
+  if (category === 'diagnosis' && field === 'icd_hint') {
+    return 'icd10';
   }
 
-  if (category === 'lab_result' && key === 'test') {
-    return 'analyte';
+  if (category === 'lab_result' && field === 'analyte') {
+    return 'test';
   }
 
-  return key;
+  return field;
 }
 
 export const ReviewFieldPanel = ({ field, onReviewed, onCancel }: Props) => {
@@ -61,7 +66,7 @@ export const ReviewFieldPanel = ({ field, onReviewed, onCancel }: Props) => {
   // Initialize form from the field value — only keep editable keys that exist in value
   const initialForm: Record<string, string> = {};
   for (const key of editableKeys) {
-    const val = field.value[key] ?? field.value[frontendKeyToBackendField(field.category, key)];
+    const val = field.value[key] ?? field.value[backendFieldToValueKey(field.category, key)];
     if (val != null) {
       initialForm[key] = String(val);
     }
@@ -90,21 +95,27 @@ export const ReviewFieldPanel = ({ field, onReviewed, onCancel }: Props) => {
       setError(null);
 
       const changedKeys = Object.keys(formData).filter((k) => {
-        const original = field.value[k] ?? field.value[frontendKeyToBackendField(field.category, k)];
+        const original = field.value[k] ?? field.value[backendFieldToValueKey(field.category, k)];
         return String(original ?? '') !== formData[k];
       });
 
       if (changedKeys.length === 0) {
+        // Accepting a correct extraction is still a review decision and has to
+        // reach the backend. Returning here used to close the panel without
+        // sending anything, so the chip stayed amber and the button came
+        // straight back -- there was no way to resolve a correct value at all.
+        await updateRecordField({ sk: field.sk, confirm: true });
         onReviewed();
         return;
       }
 
-      // Send one PATCH per changed field (backend expects per-attribute updates)
+      // One PATCH per changed field; the backend takes one attribute at a time
+      // and confirms the entity's provenance on each write.
       await Promise.all(
         changedKeys.map((k) =>
           updateRecordField({
             sk: field.sk,
-            field: frontendKeyToBackendField(field.category, k),
+            field: k,
             value: formData[k],
           })
         )

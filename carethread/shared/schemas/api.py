@@ -72,8 +72,24 @@ class PatientRecordResponse(BaseModel):
 class RecordFieldPatchRequest(BaseModel):
     """Payload to confirm or correct a field flagged as needs_review."""
     sk: str = Field(..., min_length=1, description="Target DynamoDB Sort Key (e.g. MED#metformin)")
-    field: str = Field(..., min_length=1, description="Attribute name to update (e.g., strength)")
-    value: Any = Field(..., description="New corrected value")
+    field: Optional[str] = Field(
+        default=None, min_length=1, description="Attribute name to update (e.g., strength)"
+    )
+    value: Any = Field(default=None, description="New corrected value")
+    confirm: bool = Field(
+        default=False,
+        description=(
+            "Accept the extracted values as correct without changing any of them. "
+            "Resolving a chip whose extraction was right is the common case and "
+            "still has to reach the store, so it cannot require a field edit."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def require_field_or_confirm(self) -> "RecordFieldPatchRequest":
+        if self.field is None and not self.confirm:
+            raise ValueError("either 'field' (with 'value') or 'confirm: true' is required")
+        return self
 
 
 class RecordFieldPatchResponse(BaseModel):

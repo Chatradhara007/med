@@ -11,6 +11,7 @@ Client request bodies can never specify or override patient_id.
 
 import json
 import logging
+import re
 from typing import Any, Dict, Optional
 from pydantic import ValidationError
 
@@ -171,7 +172,9 @@ def handler(
         return make_response(200, {"status": "ok"})
 
     if http_method == "POST":
-        if path.endswith("/delete") or "delete" in path:
+        # Match the delete *segment*, not the substring: `"delete" in path`
+        # also fired for any doc_id that happened to contain the word.
+        if re.match(r"^/documents/[^/]+/delete$", path):
             return handle_delete_document(event, service)
         return handle_post_documents(event, service)
     elif http_method == "GET":

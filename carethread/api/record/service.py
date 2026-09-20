@@ -163,25 +163,28 @@ class RecordService:
             raise ValueError("patient_id must be a non-empty string")
 
         sk = request.sk.strip()
-        field = request.field.strip()
+        field = request.field.strip() if request.field else None
         value = request.value
 
-        # 1. Resolve entity type and check allowlists
+        # 1. Resolve entity type and check allowlists. A confirm-only request
+        #    changes no value, so there is no field to screen -- but the sk is
+        #    still resolved so an unknown entity type is rejected the same way.
         entity_type = _resolve_entity_type(sk)
         rules = ENTITY_ALLOWLIST[entity_type]
 
-        if field in rules["forbidden"]:
-            raise ValueError(f"Field '{field}' is immutable and cannot be modified")
-        if field not in rules["editable"]:
-            raise ValueError(f"Field '{field}' is not editable on entity '{entity_type}'")
+        if field is not None:
+            if field in rules["forbidden"]:
+                raise ValueError(f"Field '{field}' is immutable and cannot be modified")
+            if field not in rules["editable"]:
+                raise ValueError(f"Field '{field}' is not editable on entity '{entity_type}'")
 
-        # 2. Field-specific data validation
-        if field == "age":
-            if not isinstance(value, int) or value < 0 or value > 150:
-                raise ValueError("age must be an integer between 0 and 150")
-        elif field in ("name", "phone", "strength", "freq"):
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"{field} must be a non-empty string")
+            # 2. Field-specific data validation
+            if field == "age":
+                if not isinstance(value, int) or value < 0 or value > 150:
+                    raise ValueError("age must be an integer between 0 and 150")
+            elif field in ("name", "phone", "strength", "freq"):
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(f"{field} must be a non-empty string")
 
         # 3. Targeted, non-destructive write through the repository contract.
         #    Resolving a needs_review chip transitions provenance to confirmed
@@ -194,7 +197,10 @@ class RecordService:
             confirm_provenance=True,
         )
 
-        logger.info("Successfully updated %s.%s for patient %s", sk, field, patient_id)
+        if field is None:
+            logger.info("Confirmed %s for patient %s", sk, patient_id)
+        else:
+            logger.info("Successfully updated %s.%s for patient %s", sk, field, patient_id)
 
         # PK/SK are internal storage keys; the caller already supplied the sk
         # and has no use for the partition key.

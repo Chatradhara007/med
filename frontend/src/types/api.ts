@@ -286,11 +286,13 @@ export interface CreateDocumentResponse {
   upload_url: string;
 }
 
-export interface UpdateRecordFieldRequest {
-  sk: string;
-  field: string;
-  value: string | number | boolean;
-}
+/**
+ * Either correct a value (`field` + `value`) or accept the extraction as it
+ * stands (`confirm: true`). Both resolve the entity's `needs_review` chip.
+ */
+export type UpdateRecordFieldRequest =
+  | { sk: string; field: string; value: string | number | boolean; confirm?: false }
+  | { sk: string; confirm: true; field?: undefined; value?: undefined };
 
 export interface UpdateRecordRequest {
   sk: string;

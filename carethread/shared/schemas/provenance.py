@@ -38,6 +38,15 @@ class ProvenanceSource(BaseModel):
         description="[ymin, xmin, ymax, xmax] coordinates normalized to a 0-1000 integer/float grid"
     )
     verbatim: str = Field(..., min_length=1, description="Exact verbatim substring extracted from scan")
+    bbox_exact: bool = Field(
+        default=True,
+        description=(
+            "False when the verbatim string could not be located in the document's "
+            "text layer and bbox is the whole page. The citation is still real -- "
+            "the quote and the page are known -- but the overlay cannot be tight, "
+            "so the UI should show a page-level citation rather than a box."
+        ),
+    )
 
     @field_validator("bbox")
     @classmethod

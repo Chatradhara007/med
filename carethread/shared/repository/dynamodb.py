@@ -229,20 +229,27 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
         self,
         patient_id: str,
         sk: str,
-        field: str,
-        value: Any,
+        field: Optional[str] = None,
+        value: Any = None,
         confirm_provenance: bool = True,
     ) -> dict:
-        """Targeted single-field update, leaving every other attribute untouched."""
+        """Targeted single-field update, leaving every other attribute untouched.
+
+        ``field`` may be omitted to confirm an entity without changing a value.
+        A patient accepting a correct extraction is the common case, and it
+        needs to reach the store: short-circuiting it client-side left the
+        chip amber forever with no request ever sent.
+        """
         self._validate_patient_id(patient_id)
         pk = f"PATIENT#{patient_id}"
 
-        update_parts = ["#f = :value", "updated_at = :updated_at"]
-        names = {"#f": field}
-        values = {
-            ":value": value,
-            ":updated_at": datetime.now(timezone.utc).isoformat(),
-        }
+        update_parts = ["updated_at = :updated_at"]
+        names = {}
+        values = {":updated_at": datetime.now(timezone.utc).isoformat()}
+        if field is not None:
+            update_parts.insert(0, "#f = :value")
+            names["#f"] = field
+            values[":value"] = value
         if confirm_provenance:
             # Only rewrites the nested status; the source citation is untouched.
             update_parts.append("#prov.#st = :confirmed")
@@ -267,7 +274,7 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
                 # Entities without a provenance map (a patient PROFILE) cannot
                 # take the nested status write; retry with the field alone.
                 code = e.response.get("Error", {}).get("Code")
-                if not confirm_provenance or code != "ValidationException":
+                if not confirm_provenance or code != "ValidationException" or field is None:
                     raise
                 response = _write(
                     "#f = :value, updated_at = :updated_at",

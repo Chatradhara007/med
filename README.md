@@ -26,7 +26,7 @@ carethread/
 ├── api/             # REST handlers and the unified router
 ├── data/            # curated drug index, NTI list, reference ranges
 ├── infra/           # SAM template
-└── tests/           # 257 tests
+└── tests/           # 284 tests
 ```
 
 ## Local development
@@ -78,10 +78,15 @@ model is not enabled.
 
 ### PDF rasterisation
 
-`RasteriseFn` carries the `PdfRenderLayer`
+`RasteriseFn`, `ExtractFn` and `ValidateFn` carry the `PdfRenderLayer`
 (`carethread/infra/layers/pdf/`), which ships `pypdfium2` -- the PDFium engine
 inside the wheel, so there is no poppler and no system package to install, and
 it is permissively licensed where PyMuPDF is AGPL.
+
+RasteriseFn uses it to render pages. The other two use it to read the text
+layer: PDFium exposes a box per character, which is what lets a verbatim quote
+be located on the page. `pypdf` returns page text with no coordinates, so
+without the layer every citation degrades to a whole-page box.
 
 **Build with `sam build --use-container` on macOS or Windows.** The wheel is
 platform specific; without the container flag SAM packages the wheel for your
@@ -115,7 +120,12 @@ Rasterise → Classify → RouteByType ─┬→ ExtractX → ValidateSchema →
 - **ValidateSchema** re-prompts once with the validation errors appended. This
   roughly halves extraction failures.
 - **GateConfidence** splits fields at 0.85: at or above becomes `confirmed`,
-  below stays `needs_review` as an amber chip the patient resolves.
+  below stays `needs_review` as an amber chip the patient resolves. A field the
+  document never stated is forced to `needs_review` whatever the model's
+  confidence. Citation *precision* is reported separately as
+  `source.bbox_exact` and does not affect the status -- it used to, which made
+  `confirmed` unreachable for any document without a text layer and left every
+  chip amber forever.
 - Any failure routes to `HandleFailure`, which sets the document to `failed`
   with a single-line, patient-facing reason — never a stack trace.
 
@@ -138,8 +148,9 @@ Rasterise → Classify → RouteByType ─┬→ ExtractX → ValidateSchema →
 | :--- | :--- | :--- |
 | `POST` | `/documents` | Register metadata, return a presigned S3 PUT URL |
 | `GET` | `/documents/{id}` | Ingestion status and rasterised pages |
+| `DELETE` | `/documents/{id}` | Remove a document and the entities citing it |
 | `GET` | `/record` | Full canonical record from one partition query |
-| `PATCH` | `/record/{field}` | Allowlisted field edit; resolves a `needs_review` chip |
+| `PATCH` | `/record/{field}` | Allowlisted field edit, or `confirm: true` to accept as-is; either resolves a `needs_review` chip |
 | `POST` | `/substitution` | Bioequivalent screening, NTI block, interaction cross-check |
 | `POST` | `/plan/{day}/{slot}/done` | Confirm adherence, suppress that reminder |
 | `POST` | `/plan/generate` | Compile the 7-day care plan |
@@ -192,6 +203,15 @@ missing variables and which output each comes from. See `frontend/README.md`.
   `MED#metformin` in the browser.
 - **`bbox` is `[ymin, xmin, ymax, xmax]` on a 0-1000 grid** — Y first, not
   pixels, not `[x, y, w, h]`. Scale to the rendered image size.
+- **Check `source.bbox_exact` before drawing an overlay.** When it is `false`
+  the verbatim string could not be located in the document's text layer and
+  `bbox` is the whole page — true of every scan and camera photo, which carry
+  no text layer at all. Show a page-level citation, not a box around the
+  entire page.
+- **Resolving a chip does not require an edit.** Send
+  `PATCH /record/field` with `{sk, confirm: true}` when the extraction is
+  already correct. Accepting a value is a review decision and has to reach the
+  backend; sending nothing leaves the chip amber.
 - **Document status is a ten-state machine.** Poll `GET /documents/{id}` and
   handle `unsupported`, `failed` and `review_required`, not just `ready`;
   `error` carries a message that is safe to show the patient.
