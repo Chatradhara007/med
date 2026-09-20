@@ -6,6 +6,7 @@ import { MedicineLayout, MedicineScanner, MedicineResult, PreviousScans } from '
 import { Profile } from '../../features/patient';
 import { AuthPage } from '../../features/auth/pages/AuthPage';
 import { ProtectedRoute } from './ProtectedRoute';
+import { LabInterpretationPage } from '../../features/labs/pages/LabInterpretationPage';
 
 const router = createBrowserRouter([
   {
@@ -35,6 +36,7 @@ const router = createBrowserRouter([
             ],
           },
           { path: 'profile', element: <Profile /> },
+          { path: 'labs', element: <LabInterpretationPage /> },
         ]
       }
     ]

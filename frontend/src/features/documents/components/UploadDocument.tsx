@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { createDocument } from '../../../api/documents';
+import { createDocument, uploadToS3 } from '../../../api/documents';
 
 interface Props {
-  onUploadStarted: () => void;
+  onUploadComplete: (docId: string) => void;
 }
 
-export const UploadDocument = ({ onUploadStarted }: Props) => {
+export const UploadDocument = ({ onUploadComplete }: Props) => {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -20,6 +21,7 @@ export const UploadDocument = ({ onUploadStarted }: Props) => {
   const handleCancel = () => {
     setFile(null);
     setError(null);
+    setUploadProgress('');
   };
 
   const handleUpload = async () => {
@@ -27,23 +29,27 @@ export const UploadDocument = ({ onUploadStarted }: Props) => {
     try {
       setUploading(true);
       setError(null);
-      // Simulating getting the presigned URL
+
+      // Step 1: Request presigned upload URL from backend
+      setUploadProgress('Requesting upload URL...');
       const res = await createDocument({
         filename: file.name,
-        content_type: file.type || 'application/pdf'
+        content_type: file.type || 'application/pdf',
       });
-      // (Mock) We would now upload the file to `res.upload_url`
-      console.log(`Mock uploading ${file.name} to ${res.upload_url}`);
-      
-      // Artificial delay for upload UX
-      await new Promise(r => setTimeout(r, 1000));
-      
+
+      // Step 2: PUT file directly to S3 using the presigned URL
+      setUploadProgress('Uploading to secure storage...');
+      await uploadToS3(res.upload_url, file);
+
+      setUploadProgress('Upload complete. Processing started...');
       setFile(null);
-      onUploadStarted(); // Notify parent to refresh list
-    } catch {
-      setError('Failed to initiate upload. Please try again.');
+      onUploadComplete(res.doc_id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Upload failed';
+      setError(`Failed to upload: ${msg}`);
     } finally {
       setUploading(false);
+      setUploadProgress('');
     }
   };
 
@@ -66,9 +72,10 @@ export const UploadDocument = ({ onUploadStarted }: Props) => {
               <small>{(file.size / 1024 / 1024).toFixed(2)} MB</small>
             </div>
           </div>
-          
+
+          {uploadProgress && <div className="upload-progress">{uploadProgress}</div>}
           {error && <div className="upload-error">{error}</div>}
-          
+
           <div className="upload-actions">
             <button className="btn-cancel" onClick={handleCancel} disabled={uploading}>Cancel</button>
             <button className="btn-upload" onClick={handleUpload} disabled={uploading}>

@@ -6,6 +6,7 @@ export const BottomNav = () => {
       <NavLink to="/">Home</NavLink>
       <NavLink to="/documents">Documents</NavLink>
       <NavLink to="/medicine">Medicine</NavLink>
+      <NavLink to="/labs">Labs</NavLink>
       <NavLink to="/profile">Profile</NavLink>
     </nav>
   );

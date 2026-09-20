@@ -17,12 +17,12 @@ export const ProvenanceInfo = ({ source, confidence }: Props) => {
           Confidence: {confPercent}%
         </span>
       </div>
-      
+
       <div className="prov-details">
-        <span className="prov-doc">{source.doc_name || `Doc: ${source.doc_id}`}</span>
+        <span className="prov-doc">Doc: {source.doc_id}</span>
         {source.page && <span className="prov-page">• Page {source.page}</span>}
       </div>
-      
+
       {source.verbatim && (
         <blockquote className="prov-verbatim">
           "{source.verbatim}"

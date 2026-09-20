@@ -7,15 +7,22 @@ interface Props {
 }
 
 export const DocumentCard = ({ document }: Props) => {
-  const dateStr = new Date(document.uploadedAt).toLocaleDateString();
+  const dateStr = document.updated_at || document.created_at
+    ? new Date(document.updated_at || document.created_at || '').toLocaleDateString()
+    : 'Unknown date';
+
+  // Display name: use type if available, otherwise fall back to doc_id
+  const displayName = document.type
+    ? document.type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    : `Document ${document.id}`;
 
   return (
     <Link to={`/documents/${document.id}`} className="document-card">
       <div className="doc-card-main">
         <div className="doc-icon">📄</div>
         <div className="doc-card-info">
-          <h4>{document.name}</h4>
-          <p>{dateStr} • {document.type}</p>
+          <h4>{displayName}</h4>
+          <p>{dateStr}</p>
         </div>
       </div>
       <div className="doc-card-status">

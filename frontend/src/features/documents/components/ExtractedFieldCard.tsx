@@ -12,29 +12,37 @@ interface Props {
 
 export const ExtractedFieldCard = ({ field, onShowOriginal, onRefresh, isActiveSource }: Props) => {
   const [isReviewing, setIsReviewing] = useState(false);
-  
-  // Format the value nicely based on category
+
   const formatValue = () => {
     const v = field.value;
-    if (field.category === 'medication') return `${v.name} ${v.strength || ''} ${v.frequency || ''}`;
-    if (field.category === 'diagnosis') return `${v.condition} ${v.icd10 ? '(' + v.icd10 + ')' : ''}`;
-    if (field.category === 'lab_result') return `${v.test}: ${v.value} ${v.unit || ''}`;
-    if (field.category === 'follow_up') return `${v.instruction}`;
-    return JSON.stringify(v);
+    switch (field.category) {
+      case 'medication':
+        return [v.name, v.strength, v.frequency].filter(Boolean).join(' • ');
+      case 'diagnosis':
+        return `${v.condition}${v.icd10 ? ` (${v.icd10})` : ''}`;
+      case 'lab_result': {
+        const range = v.ref_low != null && v.ref_high != null
+          ? ` [ref: ${v.ref_low}–${v.ref_high} ${v.unit || ''}]`
+          : '';
+        return `${v.test}: ${v.value} ${v.unit || ''}${range}`;
+      }
+      case 'follow_up':
+        return String(v.instruction || '');
+      default:
+        return JSON.stringify(v);
+    }
   };
 
   return (
     <div className={`extracted-field-card ${field.status} ${isActiveSource ? 'active-source' : ''}`}>
       <div className="field-header">
-        <span className="field-category">{field.category.replace('_', ' ').toUpperCase()}</span>
+        <span className="field-category">{field.category.replace(/_/g, ' ').toUpperCase()}</span>
         <span className={`field-status-badge ${field.status}`}>
-          {field.status.replace('_', ' ')}
+          {field.status.replace(/_/g, ' ')}
         </span>
       </div>
-      
-      <div className="field-main-value">
-        {formatValue()}
-      </div>
+
+      <div className="field-main-value">{formatValue()}</div>
 
       <ProvenanceInfo source={field.source} confidence={field.confidence} />
 
@@ -42,22 +50,22 @@ export const ExtractedFieldCard = ({ field, onShowOriginal, onRefresh, isActiveS
         <button className="btn-show-original" onClick={() => onShowOriginal(field.source)}>
           Show original
         </button>
-        
+
         {field.status === 'needs_review' && !isReviewing && (
           <button className="btn-review" onClick={() => setIsReviewing(true)}>
-            Review
+            Review &amp; Correct
           </button>
         )}
       </div>
 
       {isReviewing && (
-        <ReviewFieldPanel 
-          field={field} 
+        <ReviewFieldPanel
+          field={field}
           onReviewed={() => {
             setIsReviewing(false);
             onRefresh();
-          }} 
-          onCancel={() => setIsReviewing(false)} 
+          }}
+          onCancel={() => setIsReviewing(false)}
         />
       )}
     </div>

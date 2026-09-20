@@ -1,18 +1,20 @@
-import type { CarePlanItem  } from '../../../types/api';
+import type { CarePlanItem } from '../../../types/api';
 import { CarePlanCard } from './CarePlanCard';
 
 interface Props {
-  day: string;
+  dayIndex: number;
   items: CarePlanItem[];
-  onMarkDone: (id: string) => void;
+  onMarkDone: (dayIndex: number, slot: string) => void;
 }
 
-export const TimelineDay = ({ day, items, onMarkDone }: Props) => {
+export const TimelineDay = ({ dayIndex, items, onMarkDone }: Props) => {
+  const label = dayIndex === 0 ? 'Day 0 (Today)' : `Day ${dayIndex}`;
+
   return (
     <div className="timeline-day">
-      <h3>{day}</h3>
+      <h3>{label}</h3>
       <div className="day-items">
-        {items.map(item => (
+        {items.map((item) => (
           <CarePlanCard key={item.id} item={item} onMarkDone={onMarkDone} />
         ))}
       </div>

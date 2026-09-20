@@ -5,10 +5,6 @@ interface Props {
 }
 
 export const PatientInfoCard = ({ patient }: Props) => {
-  const formattedDob = new Date(patient.dob).toLocaleDateString('en-GB', { 
-    day: 'numeric', month: 'long', year: 'numeric' 
-  });
-
   return (
     <section className="profile-card patient-info-card">
       <div className="avatar-placeholder">{patient.name.charAt(0)}</div>
@@ -16,13 +12,33 @@ export const PatientInfoCard = ({ patient }: Props) => {
         <h2>{patient.name}</h2>
         <div className="meta-grid">
           <div className="meta-item">
-            <label>Date of birth</label>
-            <span>{formattedDob}</span>
-          </div>
-          <div className="meta-item">
             <label>Patient ID</label>
             <span>{patient.id}</span>
           </div>
+          {patient.age != null && (
+            <div className="meta-item">
+              <label>Age</label>
+              <span>{patient.age} years</span>
+            </div>
+          )}
+          {patient.sex && (
+            <div className="meta-item">
+              <label>Sex</label>
+              <span>{patient.sex}</span>
+            </div>
+          )}
+          {patient.language && (
+            <div className="meta-item">
+              <label>Language</label>
+              <span>{patient.language}</span>
+            </div>
+          )}
+          {patient.phone && (
+            <div className="meta-item">
+              <label>Phone</label>
+              <span>{patient.phone}</span>
+            </div>
+          )}
         </div>
       </div>
     </section>
