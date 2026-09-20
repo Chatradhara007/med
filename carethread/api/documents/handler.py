@@ -116,6 +116,34 @@ def handle_get_document(
         return error_response(500, "INTERNAL_ERROR", f"Failed to retrieve document status: {str(e)}")
 
 
+def handle_delete_document(
+    event: Dict[str, Any],
+    service: DocumentsService,
+) -> Dict[str, Any]:
+    """Handler for DELETE /documents/{id}."""
+    # 1. Authenticate user
+    try:
+        patient_id = extract_patient_id(event)
+    except UnauthorizedError as e:
+        return error_response(401, "UNAUTHORIZED", str(e))
+
+    # 2. Extract doc_id from path parameters
+    path_params = event.get("pathParameters") or {}
+    doc_id = path_params.get("id") or path_params.get("doc_id")
+    if not doc_id:
+        return error_response(400, "MISSING_PARAM", "Missing document ID in path parameters")
+
+    # 3. Delete document
+    try:
+        service.delete_document(patient_id=patient_id, doc_id=doc_id)
+        return make_response(200, {"status": "deleted", "doc_id": doc_id})
+    except DocumentNotFoundError:
+        return error_response(404, "DOCUMENT_NOT_FOUND", f"Document {doc_id} not found")
+    except Exception as e:
+        logger.error("Failed to delete document %s: %s", doc_id, e)
+        return error_response(500, "INTERNAL_ERROR", f"Failed to delete document: {str(e)}")
+
+
 def handler(
     event: Dict[str, Any],
     context: Any = None,
@@ -133,12 +161,22 @@ def handler(
     )
     http_method = http_method.upper()
 
+    path = (
+        event.get("rawPath")
+        or event.get("path")
+        or event.get("requestContext", {}).get("http", {}).get("path", "")
+    )
+
     if http_method == "OPTIONS":
         return make_response(200, {"status": "ok"})
 
     if http_method == "POST":
+        if path.endswith("/delete") or "delete" in path:
+            return handle_delete_document(event, service)
         return handle_post_documents(event, service)
     elif http_method == "GET":
         return handle_get_document(event, service)
+    elif http_method == "DELETE":
+        return handle_delete_document(event, service)
 
     return error_response(405, "METHOD_NOT_ALLOWED", f"Method {http_method} not allowed")

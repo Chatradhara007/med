@@ -25,6 +25,7 @@ export interface CareThreadApi {
   generateCarePlan(): Promise<CarePlanGenerateResponse>;
   submitSubstitution(req: SubstitutionRequest): Promise<SubstitutionResponse>;
   interpretLabs(): Promise<LabInterpretationReport>;
+  deleteDocument(id: string): Promise<void>;
 }
 
 // There is one implementation. The app always talks to the deployed backend,

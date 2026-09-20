@@ -115,6 +115,23 @@ class InMemoryPatientRepository(PatientRepositoryInterface):
         self._table[(pk, existing_sk)] = document.model_dump()
         return document
 
+    def delete_document(self, patient_id: str, doc_id: str) -> bool:
+        self._validate_patient_id(patient_id)
+        pk = f"PATIENT#{patient_id}"
+        to_delete = []
+        for (item_pk, item_sk), data in list(self._table.items()):
+            if item_pk == pk:
+                if item_sk.startswith("DOC#") and data.get("doc_id") == doc_id:
+                    to_delete.append((item_pk, item_sk))
+                prov = data.get("provenance", {})
+                if isinstance(prov, dict):
+                    source = prov.get("source", {})
+                    if isinstance(source, dict) and source.get("doc_id") == doc_id:
+                        to_delete.append((item_pk, item_sk))
+        for k in to_delete:
+            self._table.pop(k, None)
+        return len(to_delete) > 0
+
     def update_entity_field(
         self,
         patient_id: str,

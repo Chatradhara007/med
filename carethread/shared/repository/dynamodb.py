@@ -202,6 +202,29 @@ class DynamoDBPatientRepository(PatientRepositoryInterface):
                 ) from e
             raise DatabaseError(f"Failed to update document: {e}") from e
 
+    def delete_document(self, patient_id: str, doc_id: str) -> bool:
+        """Delete a document and related entities with that provenance from DynamoDB."""
+        self._validate_patient_id(patient_id)
+        pk = f"PATIENT#{patient_id}"
+        try:
+            items = self._query_all(
+                KeyConditionExpression=Key("PK").eq(pk)
+            )
+            deleted = False
+            for raw_item in items:
+                sk = raw_item.get("SK", "")
+                if sk.startswith("DOC#") and raw_item.get("doc_id") == doc_id:
+                    self._table.delete_item(Key={"PK": pk, "SK": sk})
+                    deleted = True
+                prov = raw_item.get("provenance", {})
+                if isinstance(prov, dict):
+                    source = prov.get("source", {})
+                    if isinstance(source, dict) and source.get("doc_id") == doc_id:
+                        self._table.delete_item(Key={"PK": pk, "SK": sk})
+            return deleted
+        except ClientError as e:
+            raise DatabaseError(f"Failed to delete document {doc_id}: {e}") from e
+
     def update_entity_field(
         self,
         patient_id: str,

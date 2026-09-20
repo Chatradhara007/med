@@ -1,19 +1,17 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import type {
   DocumentMetadata,
   SourceMetadata,
   ExtractedField,
   PatientRecord,
 } from '../../../types/api';
-import { getDocument, TERMINAL_STATUSES } from '../../../api/documents';
+import { getDocument, deleteDocument, TERMINAL_STATUSES } from '../../../api/documents';
 import { getRecord } from '../../../api/record';
-import { ProcessingStatus } from '../components/ProcessingStatus';
 import { ExtractedFieldCard } from '../components/ExtractedFieldCard';
 import { DocumentViewer } from '../components/DocumentViewer';
+import { CardSkeleton } from '../../../components/ui';
 import '../Documents.css';
-
-// ─── Build ExtractedFields from canonical record filtered by doc_id ───────────
 
 function normaliseKeyPart(value: string): string {
   return value
@@ -30,7 +28,6 @@ function diagnosisSk(codeOrSlug: string | undefined, label: string): string {
   return `DIAG#${normaliseKeyPart(codeOrSlug || label)}`;
 }
 
-
 function buildExtractedFields(
   record: PatientRecord,
   docId: string
@@ -40,8 +37,6 @@ function buildExtractedFields(
   for (const med of record.activeMedications) {
     if (med.provenance?.source.doc_id !== docId) continue;
     fields.push({
-      // Backend does not serialize the @property sk field,
-      // so derive the real DynamoDB SK from the canonical name.
       sk: med.sk || medicationSk(med.name),
       category: 'medication',
       value: {
@@ -63,8 +58,6 @@ function buildExtractedFields(
   for (const diag of record.diagnoses) {
     if (diag.provenance?.source.doc_id !== docId) continue;
     fields.push({
-      // Backend does not serialize the @property sk field,
-      // so derive the real DynamoDB SK.
       sk: diag.sk || diagnosisSk(diag.code_or_slug, diag.condition),
       category: 'diagnosis',
       value: {
@@ -105,12 +98,30 @@ function buildExtractedFields(
 
 export const DocumentDetailPage = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [document, setDocument] = useState<DocumentMetadata | null>(null);
   const [extractedFields, setExtractedFields] = useState<ExtractedField<Record<string, unknown>>[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<SourceMetadata | null>(null);
   const [activeFieldSk, setActiveFieldSk] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this document? This will remove the file and associated clinical extractions.'
+    );
+    if (!confirmed || !id) return;
+    try {
+      setIsDeleting(true);
+      await deleteDocument(id);
+      navigate('/documents');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete document';
+      alert(msg);
+      setIsDeleting(false);
+    }
+  };
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -143,25 +154,40 @@ export const DocumentDetailPage = () => {
         setDocument(doc);
         if (TERMINAL_STATUSES.has(doc.status)) {
           clearInterval(interval);
-          // Refresh record to pick up any newly extracted entities
           const record = await getRecord();
           setExtractedFields(buildExtractedFields(record, id!));
         }
       } catch {
         clearInterval(interval);
       }
-    }, 5000);
+    }, 4000);
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [document?.status, id]);
 
-  if (loading && !document) return <div className="loading">Loading document...</div>;
+  if (loading && !document) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <CardSkeleton />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      </div>
+    );
+  }
+
   if (error || !document) {
     return (
-      <div className="document-detail-page">
-        <Link to="/documents" className="back-link">← Back to Documents</Link>
-        <div className="error-message">{error || 'Document not found'}</div>
+      <div className="ct-card" style={{ borderColor: 'var(--ct-blocked-border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--ct-blocked)' }}>
+          <h3>Unable to load document</h3>
+        </div>
+        <p style={{ color: 'var(--ct-text-secondary)', marginTop: '8px' }}>{error || 'Document not found'}</p>
+        <Link to="/documents" className="btn-secondary" style={{ display: 'inline-flex', marginTop: '16px' }}>
+          ← Back to Documents
+        </Link>
       </div>
     );
   }
@@ -169,76 +195,177 @@ export const DocumentDetailPage = () => {
   const isProcessing = !TERMINAL_STATUSES.has(document.status);
   const displayName = document.type
     ? document.type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-    : `Document ${document.id}`;
+    : `Clinical Document (${document.id.slice(0, 8)})`;
+
+  const pageCount = Array.isArray(document.pages)
+    ? document.pages.length
+    : typeof document.pages === 'number'
+    ? document.pages
+    : 1;
 
   return (
-    <div className="document-detail-page">
-      <Link to="/documents" className="back-link">← Back to Documents</Link>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {/* Back Link and Header */}
+      <div>
+        <Link
+          to="/documents"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            color: 'var(--ct-text-muted)',
+            fontSize: '13px',
+            textDecoration: 'none',
+            marginBottom: '12px',
+          }}
+        >
+          ← Back to All Documents
+        </Link>
 
-      <header className="doc-detail-header">
-        <h2>{displayName}</h2>
-        <div className="doc-meta">
-          <ProcessingStatus status={document.status} />
-          {document.created_at && (
-            <span>Uploaded: {new Date(document.created_at).toLocaleDateString()}</span>
-          )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <h1 style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--ct-text-primary)', margin: 0 }}>
+              {displayName}
+            </h1>
+            <div style={{ fontSize: '12.5px', color: 'var(--ct-text-muted)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span>ID: <code style={{ color: 'var(--ct-text-secondary)' }}>{document.id}</code></span>
+              <span>•</span>
+              <span>{document.created_at ? new Date(document.created_at).toLocaleString() : 'Active'}</span>
+              <span>•</span>
+              <span className="tabular">{pageCount} Rasterised Page{pageCount > 1 ? 's' : ''}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span className={`ct-badge ${document.status === 'ready' ? 'confirmed' : document.status === 'failed' ? 'abnormal' : 'review'}`}>
+              {document.status.replace(/_/g, ' ').toUpperCase()}
+            </span>
+
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                borderRadius: 'var(--ct-radius-sm)',
+                color: '#f87171',
+                backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.18)';
+                e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.08)';
+                e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.25)';
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <line x1="10" y1="11" x2="10" y2="17" />
+                <line x1="14" y1="11" x2="14" y2="17" />
+              </svg>
+              <span>{isDeleting ? 'Deleting...' : 'Delete Document'}</span>
+            </button>
+          </div>
         </div>
-      </header>
+      </div>
 
       {document.errorReason && (
-        <div className="doc-detail-error">
-          <p><strong>Processing Failed:</strong> {document.errorReason}</p>
+        <div
+          style={{
+            padding: '14px 18px',
+            backgroundColor: 'var(--ct-blocked-bg)',
+            border: '1px solid var(--ct-blocked-border)',
+            borderRadius: 'var(--ct-radius-md)',
+            color: 'var(--ct-blocked)',
+            fontSize: '13.5px',
+          }}
+        >
+          <strong>Processing Notice:</strong> {document.errorReason}
         </div>
       )}
 
       {isProcessing && (
-        <div className="doc-processing-banner">
-          <span className="spinner-small" />
-          <p>We are currently extracting information from this document. This page will update automatically.</p>
+        <div
+          style={{
+            padding: '16px 20px',
+            backgroundColor: 'var(--ct-primary-subtle)',
+            border: '1px solid var(--ct-primary-border)',
+            borderRadius: 'var(--ct-radius-md)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            color: '#60a5fa',
+            fontSize: '13.5px',
+          }}
+        >
+          <span className="pulse-dot" />
+          <span>Multimodal ingestion in progress. Extracted clinical fields will populate automatically once ready.</span>
         </div>
       )}
 
-      <div className="doc-detail-content">
-        <section className="doc-extracted-pane">
-          <h3>Extracted Information</h3>
-          {document.status === 'ready' || document.status === 'review_required' ? (
-            <div className="extracted-fields-list">
-              {extractedFields.length > 0 ? (
-                extractedFields.map((field) => (
-                  <ExtractedFieldCard
-                    key={field.sk}
-                    field={field}
-                    isActiveSource={activeFieldSk === field.sk}
-                    onShowOriginal={(source) => {
-                      setActiveSource(source);
-                      setActiveFieldSk(field.sk);
-                    }}
-                    onRefresh={fetchData}
-                  />
-                ))
-              ) : (
-                <p className="not-ready-text">
-                  No clinical entities were extracted from this document.
-                </p>
-              )}
-            </div>
-          ) : (
-            <p className="not-ready-text">
-              {document.status === 'failed'
-                ? 'Extraction failed. See error above.'
-                : document.status === 'unsupported'
-                  ? 'This document type is not supported for extraction.'
-                  : 'Extracted information will be available once processing completes.'}
-            </p>
-          )}
-        </section>
-
-        <section className="doc-original-pane">
-          <h3>Original Document</h3>
+      {/* Dual Pane: Left = Original Document Viewer with Bounding Boxes, Right = Extracted Entities */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1.3fr)', gap: '24px', alignItems: 'flex-start' }}>
+        {/* Left: Document Viewer */}
+        <section className="ct-card" style={{ padding: '20px' }}>
+          <div className="ct-card-header">
+            <h2 className="ct-card-title">
+              <span>Original Document &amp; Citations</span>
+            </h2>
+          </div>
           <DocumentViewer
             pageUrls={document.page_urls || []}
             sourceHighlight={activeSource}
           />
+        </section>
+
+        {/* Right: Extracted Entities with Provenance */}
+        <section className="ct-card" style={{ padding: '20px' }}>
+          <div className="ct-card-header">
+            <div>
+              <h2 className="ct-card-title">
+                <span>Extracted Clinical Entities ({extractedFields.length})</span>
+              </h2>
+              <p style={{ fontSize: '12px', color: 'var(--ct-text-muted)', margin: 0, marginTop: '2px' }}>
+                Every item is anchored to exact coordinates on the document. Click "Show original" to jump to bounding box.
+              </p>
+            </div>
+          </div>
+
+          {extractedFields.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ct-text-muted)' }}>
+              <p style={{ fontSize: '13.5px', margin: 0 }}>
+                {document.status === 'ready'
+                  ? 'No clinical medications, labs, or diagnoses were detected in this document.'
+                  : 'Extracted clinical data will appear here once the ingestion pipeline finishes.'}
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {extractedFields.map((field) => (
+                <ExtractedFieldCard
+                  key={field.sk}
+                  field={field}
+                  isActiveSource={activeFieldSk === field.sk}
+                  onShowOriginal={(source) => {
+                    setActiveSource(source);
+                    setActiveFieldSk(field.sk);
+                  }}
+                  onRefresh={fetchData}
+                />
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </div>

@@ -54,3 +54,10 @@ export const pollDocumentUntilTerminal = async (
   // Return last known state even if not terminal
   return getDocument(id);
 };
+
+/**
+ * Delete a document from patient record and storage.
+ */
+export const deleteDocument = async (id: string): Promise<void> => {
+  return await apiClient.deleteDocument(id);
+};

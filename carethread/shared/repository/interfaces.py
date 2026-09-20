@@ -56,6 +56,11 @@ class PatientRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    def delete_document(self, patient_id: str, doc_id: str) -> bool:
+        """Delete a document and related entities with that provenance from the partition."""
+        pass
+
+    @abstractmethod
     def update_entity_field(
         self,
         patient_id: str,

@@ -13,54 +13,126 @@ export const SubstitutionResultPage = () => {
   }
 
   return (
-    <div className="substitution-result-page">
-      <div className="result-nav">
-        <Link to="/medicine" className="back-link">← New Scan</Link>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+      <div>
+        <Link
+          to="/medicine"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            color: 'var(--ct-text-muted)',
+            fontSize: '13px',
+            textDecoration: 'none',
+            marginBottom: '12px',
+          }}
+        >
+          ← Back to Medication Scanner
+        </Link>
+        <h1 style={{ fontSize: '1.65rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--ct-text-primary)', margin: 0 }}>
+          Substitution &amp; Safety Analysis
+        </h1>
+        <p style={{ fontSize: '13.5px', color: 'var(--ct-text-secondary)', marginTop: '4px', maxWidth: '650px', lineHeight: 1.5 }}>
+          Bioequivalence evaluation, Narrow Therapeutic Index safety check, and cross-reference against active medications.
+        </p>
       </div>
 
       {result.blocked ? (
-        <BlockedSubstitution reason={result.reason || 'Substitution not available.'} />
+        <BlockedSubstitution reason={result.reason || 'Safety rail prevented automatic substitution.'} />
       ) : (
-        <>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* Interaction Warnings */}
           {result.interactions.length > 0 && (
-            <section className="interactions-section">
-              <h3>⚠️ Interaction Warnings</h3>
-              <div className="interactions-list">
+            <div
+              style={{
+                padding: '20px',
+                backgroundColor: 'var(--ct-review-bg)',
+                border: '1px solid var(--ct-review-border)',
+                borderRadius: 'var(--ct-radius-md)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '18px' }}>⚠️</span>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--ct-review)' }}>
+                  Potential Drug Interactions Detected ({result.interactions.length})
+                </h3>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {result.interactions.map((warning, i) => (
-                  <div key={i} className="interaction-warning high">
-                    <div className="warn-header">
-                      <span className="warn-icon">⚠</span>
-                      <strong>Interaction Warning</strong>
-                    </div>
-                    <p className="warn-message">{warning}</p>
+                  <div
+                    key={i}
+                    style={{
+                      padding: '10px 14px',
+                      backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                      borderRadius: 'var(--ct-radius-sm)',
+                      borderLeft: '3px solid var(--ct-review)',
+                      fontSize: '13.5px',
+                      color: 'var(--ct-text-primary)',
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {warning}
                   </div>
                 ))}
               </div>
-            </section>
+            </div>
           )}
 
-          <section className="alternatives-section">
-            <h3>Substitution Options</h3>
+          {/* Alternatives Section */}
+          <section className="ct-card">
+            <div className="ct-card-header">
+              <div>
+                <h2 className="ct-card-title">
+                  <span>Bioequivalent Substitution Options</span>
+                </h2>
+                <p style={{ fontSize: '12.5px', color: 'var(--ct-text-muted)', margin: 0, marginTop: '2px' }}>
+                  {result.alternatives.length} verified bioequivalent alternative{result.alternatives.length > 1 ? 's' : ''} available in pharmacy formulary
+                </p>
+              </div>
+            </div>
+
             {result.alternatives.length === 0 ? (
-              <p className="no-alternatives">No alternatives found for this medicine.</p>
+              <div style={{ textAlign: 'center', padding: '32px 20px', color: 'var(--ct-text-muted)' }}>
+                <p style={{ fontSize: '13.5px', margin: 0 }}>
+                  No bioequivalent alternatives were found matching the exact salt and dosage profile.
+                </p>
+              </div>
             ) : (
-              <>
-                <p className="alt-subtitle">✓ {result.alternatives.length} alternative{result.alternatives.length > 1 ? 's' : ''} available</p>
-                <div className="alternatives-list">
-                  {result.alternatives.map((alt, i) => (
-                    <AlternativeCard key={i} alternative={alt} />
-                  ))}
-                </div>
-              </>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {result.alternatives.map((alt, i) => (
+                  <AlternativeCard key={i} alternative={alt} />
+                ))}
+              </div>
             )}
           </section>
-        </>
-      )}
 
-      <div className="advisory-banner">
-        <strong>IMPORTANT</strong>
-        <p>Do not change your medication based only on this result. Ask your pharmacist or clinician before switching medicines.</p>
-      </div>
+          {/* Clinical Advisory Banner */}
+          <div
+            style={{
+              padding: '18px 24px',
+              backgroundColor: 'var(--ct-surface)',
+              border: '1px solid var(--ct-border)',
+              borderRadius: 'var(--ct-radius-md)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '14px',
+            }}
+          >
+            <span style={{ fontSize: '24px' }}>🛡️</span>
+            <div>
+              <strong style={{ color: 'var(--ct-text-primary)', fontSize: '13.5px', display: 'block', marginBottom: '2px' }}>
+                Advisory Only — Consult Pharmacist Before Switching
+              </strong>
+              <p style={{ margin: 0, fontSize: '12px', color: 'var(--ct-text-muted)', lineHeight: 1.5 }}>
+                CareThread checks drug databases for equivalence and known interactions. It does not replace clinical consultation. Always confirm medication adjustments with a licensed medical professional.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

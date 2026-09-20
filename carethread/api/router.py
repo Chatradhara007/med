@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 from carethread.shared.repository.interfaces import PatientRepositoryInterface
 from carethread.shared.storage.interfaces import StorageServiceInterface
 from carethread.api.common.response import make_response, error_response
-from carethread.api.documents.handler import handle_post_documents, handle_get_document
+from carethread.api.documents.handler import handle_post_documents, handle_get_document, handle_delete_document
 from carethread.api.documents.service import DocumentsService
 from carethread.api.record.handler import handle_get_record, handle_patch_field, handle_plan_done
 from carethread.api.record.service import RecordService
@@ -64,14 +64,27 @@ class ApiRouter:
             return handle_post_documents(event, doc_service)
 
         doc_match = re.match(r"^/documents/([^/]+)$", path)
-        if doc_match and http_method == "GET":
+        if doc_match:
             if not event.get("pathParameters"):
                 event["pathParameters"] = {"id": doc_match.group(1)}
             if doc_service is None:
                 from carethread.shared.repository import get_repository
                 from carethread.shared.storage import get_storage_service
                 doc_service = DocumentsService(repository=get_repository(), storage=get_storage_service())
-            return handle_get_document(event, doc_service)
+            if http_method == "GET":
+                return handle_get_document(event, doc_service)
+            elif http_method == "DELETE":
+                return handle_delete_document(event, doc_service)
+
+        doc_delete_match = re.match(r"^/documents/([^/]+)/delete$", path)
+        if doc_delete_match and http_method in ("POST", "DELETE"):
+            if not event.get("pathParameters"):
+                event["pathParameters"] = {"id": doc_delete_match.group(1)}
+            if doc_service is None:
+                from carethread.shared.repository import get_repository
+                from carethread.shared.storage import get_storage_service
+                doc_service = DocumentsService(repository=get_repository(), storage=get_storage_service())
+            return handle_delete_document(event, doc_service)
 
         # 2. /record routes
         if path == "/record" and http_method == "GET":
@@ -140,7 +153,8 @@ class ApiRouter:
         """Methods this API exposes on the given path, if any."""
         routes = [
             (r"^/documents$", {"POST"}),
-            (r"^/documents/[^/]+$", {"GET"}),
+            (r"^/documents/[^/]+$", {"GET", "DELETE"}),
+            (r"^/documents/[^/]+/delete$", {"POST", "DELETE"}),
             (r"^/record$", {"GET", "PATCH"}),
             (r"^/record/[^/]+$", {"PATCH"}),
             (r"^/plan/generate$", {"POST"}),

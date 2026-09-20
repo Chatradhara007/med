@@ -322,3 +322,42 @@ def test_get_document_status_not_found(test_service):
     }
     get_resp = handler(event=get_event, service=test_service)
     assert get_resp["statusCode"] == 404
+
+
+def test_delete_document_success(test_service):
+    """DELETE /documents/{id} successfully deletes document."""
+    # 1. Register a document
+    create_req = DocumentCreateRequest(filename="doc_to_delete.pdf", content_type="application/pdf")
+    created = test_service.create_document("pat_del_01", create_req)
+    doc_id = created.doc_id
+
+    # 2. DELETE /documents/{id}
+    del_event = {
+        "httpMethod": "DELETE",
+        "requestContext": {
+            "authorizer": {
+                "jwt": {
+                    "claims": {"sub": "pat_del_01"}
+                }
+            }
+        },
+        "pathParameters": {"id": doc_id}
+    }
+    del_resp = handler(event=del_event, service=test_service)
+    assert del_resp["statusCode"] == 200
+    assert json.loads(del_resp["body"])["status"] == "deleted"
+
+    # 3. Verify it is now 404
+    get_event = {
+        "httpMethod": "GET",
+        "requestContext": {
+            "authorizer": {
+                "jwt": {
+                    "claims": {"sub": "pat_del_01"}
+                }
+            }
+        },
+        "pathParameters": {"id": doc_id}
+    }
+    get_resp = handler(event=get_event, service=test_service)
+    assert get_resp["statusCode"] == 404

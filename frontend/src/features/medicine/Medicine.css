@@ -1,29 +1,11 @@
-
-.medicine-scanner-page, .substitution-result-page, .previous-scans-page {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.scanner-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.history-link {
-  color: #3b82f6;
-  text-decoration: none;
-  font-weight: 500;
-  font-size: 0.9rem;
-}
+/* Medicine & Substitution Styling */
 
 .camera-capture-container {
-  background-color: #f8fafc;
-  border: 2px dashed #cbd5e1;
-  border-radius: 16px;
+  background-color: var(--ct-surface-elevated);
+  border: 2px dashed var(--ct-border);
+  border-radius: var(--ct-radius-lg);
   overflow: hidden;
-  min-height: 300px;
+  min-height: 280px;
   display: flex;
   flex-direction: column;
 }
@@ -34,202 +16,70 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
+  padding: 40px 24px;
   text-align: center;
 }
 
 .capture-icon {
-  font-size: 3rem;
-  margin-bottom: 16px;
+  font-size: 2.5rem;
+  margin-bottom: 14px;
 }
 
-.capture-prompt h3 { margin: 0 0 8px 0; }
-.capture-prompt p { color: #64748b; margin-bottom: 24px; font-size: 0.95rem; }
-
-.btn-capture {
-  background-color: #3b82f6;
-  color: white;
-  padding: 14px 28px;
-  border-radius: 12px;
-  font-weight: 600;
-  font-size: 1.1rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
-}
-.btn-capture:hover { background-color: #2563eb; }
-
-.capture-preview {
-  display: flex;
-  flex-direction: column;
-}
-
-.preview-image {
+.camera-preview-wrapper {
+  position: relative;
   width: 100%;
-  max-height: 400px;
-  object-fit: contain;
-  background-color: #1e293b;
-}
-
-.preview-actions {
+  max-height: 420px;
+  background-color: #000;
   display: flex;
-  padding: 16px;
-  gap: 12px;
-  background-color: white;
-}
-
-.btn-retake, .btn-submit {
-  flex: 1;
-  padding: 14px;
-  border-radius: 12px;
-  font-weight: 600;
-  font-size: 1rem;
-  cursor: pointer;
-}
-.btn-retake {
-  background-color: #f1f5f9;
-  border: 1px solid #cbd5e1;
-  color: #475569;
-}
-.btn-submit {
-  background-color: #10b981;
-  border: none;
-  color: white;
-  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3);
-}
-
-.scanner-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   justify-content: center;
-  padding: 60px 20px;
-  background-color: #f8fafc;
-  border-radius: 16px;
-  color: #475569;
-  font-weight: 500;
 }
-.spinner {
-  width: 40px; height: 40px;
-  border: 4px solid #cbd5e1;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 20px;
+
+.camera-video, .preview-image {
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
 
-/* Result Page */
-.detected-card {
-  background-color: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 12px;
-  padding: 16px;
-  color: #166534;
-}
-.detected-card h4 { margin: 0 0 4px 0; font-size: 1.2rem; }
-.detected-card p { margin: 0; opacity: 0.9; }
-.detected-card .strength { font-weight: 600; margin-top: 8px; }
-
-.alt-subtitle { color: #16a34a; font-weight: 600; margin-bottom: 12px; }
-
-.alternatives-list {
+.camera-controls, .preview-actions {
   display: flex;
-  flex-direction: column;
+  justify-content: center;
   gap: 12px;
+  padding: 16px;
+  background-color: var(--ct-surface);
+  border-top: 1px solid var(--ct-border);
 }
 
-.alternative-card {
-  display: flex;
-  justify-content: space-between;
+.btn-snap {
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  padding: 10px 24px;
+  border-radius: var(--ct-radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all var(--ct-transition-fast);
+}
+
+.btn-snap:hover {
+  background: #1d4ed8;
+}
+
+.btn-file-select {
+  display: inline-flex;
   align-items: center;
-  background-color: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 2px 4px -1px rgba(0,0,0,0.05);
+  gap: 8px;
+  background-color: var(--ct-surface);
+  border: 1px solid var(--ct-border);
+  color: var(--ct-text-primary);
+  padding: 10px 20px;
+  border-radius: var(--ct-radius-md);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--ct-transition-fast);
 }
-.alt-info h4 { margin: 0 0 4px 0; }
-.alt-generic { margin: 0; color: #64748b; font-size: 0.9rem; }
-.price-badge { background-color: #f1f5f9; color: #475569; padding: 4px 10px; border-radius: 999px; font-weight: 600; font-size: 0.85rem; }
 
-.interaction-warning {
-  background-color: #fffbeb;
-  border: 2px solid #fcd34d;
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 12px;
-}
-.interaction-warning.high { background-color: #fef2f2; border-color: #fecaca; }
-.warn-header { display: flex; align-items: center; gap: 8px; color: #b45309; margin-bottom: 8px; font-size: 1.1rem; }
-.interaction-warning.high .warn-header { color: #b91c1c; }
-.warn-message { margin: 0 0 12px 0; color: #475569; }
-.interaction-warning.high .warn-message { color: #7f1d1d; }
-.warn-details { display: flex; flex-wrap: wrap; gap: 8px; }
-.warn-pill { background-color: rgba(0,0,0,0.05); padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; color: #475569; }
-
-.blocked-substitution {
-  background-color: #fef2f2;
-  border: 2px solid #fecaca;
-  border-radius: 12px;
-  padding: 24px 16px;
-  text-align: center;
-  color: #991b1b;
-}
-.blocked-header { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 12px; }
-.blocked-header h3 { margin: 0; }
-.blocked-icon { font-size: 1.5rem; }
-.blocked-desc { margin: 0 0 16px 0; }
-.blocked-reason { background-color: white; padding: 12px; border-radius: 8px; border: 1px dashed #fca5a5; margin-bottom: 16px; text-align: left; }
-.blocked-advisory { font-weight: 600; margin: 0; }
-
-.advisory-banner {
-  margin-top: 24px;
-  padding: 16px;
-  background-color: #f1f5f9;
-  border-left: 4px solid #3b82f6;
-  border-radius: 0 8px 8px 0;
-  color: #334155;
-}
-.advisory-banner strong { display: block; margin-bottom: 4px; color: #1e293b; }
-.advisory-banner p { margin: 0; font-size: 0.9rem; }
-
-/* Previous Scans */
-.scans-list { display: flex; flex-direction: column; gap: 12px; }
-.previous-scan-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  background-color: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-}
-.scan-main { display: flex; align-items: center; gap: 16px; }
-.scan-icon { font-size: 1.5rem; }
-.scan-info h4 { margin: 0 0 4px 0; }
-.scan-info p { margin: 0; font-size: 0.85rem; color: #64748b; }
-.scan-badge { padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
-.scan-badge.success { background-color: #dcfce7; color: #15803d; }
-.scan-badge.blocked { background-color: #fee2e2; color: #b91c1c; }
-
-/* Dark Mode Overrides */
-@media (prefers-color-scheme: dark) {
-  .camera-capture-container, .scanner-loading { background-color: #1e293b; border-color: #334155; color: #cbd5e1; }
-  .btn-retake, .preview-actions { background-color: #1e293b; border-color: #475569; color: #f8fafc; }
-  .detected-card { background-color: #064e3b; border-color: #047857; color: #a7f3d0; }
-  .alternative-card, .previous-scan-card { background-color: #1e293b; border-color: #334155; }
-  .alt-generic, .scan-info p { color: #94a3b8; }
-  .price-badge { background-color: #334155; color: #e2e8f0; }
-  .interaction-warning { background-color: #451a03; border-color: #92400e; }
-  .interaction-warning.high { background-color: #450a0a; border-color: #7f1d1d; }
-  .warn-header, .warn-message { color: #fde68a; }
-  .interaction-warning.high .warn-header, .interaction-warning.high .warn-message { color: #fca5a5; }
-  .warn-pill { background-color: rgba(255,255,255,0.1); color: #e2e8f0; }
-  .blocked-substitution { background-color: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
-  .blocked-reason { background-color: #1e293b; border-color: #7f1d1d; }
-  .advisory-banner { background-color: #1e293b; border-color: #3b82f6; color: #cbd5e1; }
-  .advisory-banner strong { color: #f8fafc; }
-  .scan-badge.success { background-color: #064e3b; color: #86efac; }
-  .scan-badge.blocked { background-color: #7f1d1d; color: #fca5a5; }
+.btn-file-select:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--ct-border-hover);
 }

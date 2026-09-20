@@ -113,3 +113,12 @@ class DocumentsService:
             page_urls=page_urls,
             error=document.error_reason
         )
+
+    def delete_document(self, patient_id: str, doc_id: str) -> bool:
+        """Delete document from repository."""
+        if not patient_id or not str(patient_id).strip():
+            raise ValueError("patient_id must be a non-empty string")
+        doc = self.repo.get_document(patient_id, doc_id)
+        if not doc:
+            raise DocumentNotFoundError(f"Document {doc_id} not found for patient {patient_id}")
+        return self.repo.delete_document(patient_id, doc_id)

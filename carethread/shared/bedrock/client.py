@@ -242,6 +242,100 @@ class MockBedrockClient(BedrockClientInterface):
         return self.text_responses.pop(0)
 
 
+DEFAULT_GROQ_MODEL = "qwen/qwen3.8-27b"
+
+
+class GroqClient(BedrockClientInterface):
+    """Multimodal vision client backed by Groq API."""
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> None:
+        self.api_key = api_key or os.environ.get("GROQ_API_KEY", "")
+        self.model = model or os.environ.get("GROQ_MODEL", DEFAULT_GROQ_MODEL)
+
+    def _call(
+        self,
+        messages: List[Dict[str, Any]],
+        json_mode: bool = True,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+    ) -> str:
+        import urllib.error
+        import urllib.request
+
+        payload: Dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.0,
+            "max_tokens": max_tokens,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+
+        req = urllib.request.Request(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "CareThread/1.0",
+            },
+            data=json.dumps(payload).encode("utf-8"),
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                choices = data.get("choices") or []
+                if not choices:
+                    raise BedrockInvocationError("Groq response contained no choices")
+                content = choices[0].get("message", {}).get("content", "")
+                if not content.strip():
+                    raise BedrockInvocationError("Groq response contained empty content")
+                return content
+        except Exception as exc:
+            raise BedrockInvocationError(f"Groq API call failed: {exc}") from exc
+
+    def invoke_json(
+        self,
+        prompt: str,
+        images: Optional[Sequence[bytes]] = None,
+        system: Optional[str] = None,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        image_media_type: str = "image/png",
+    ) -> Dict[str, Any]:
+        messages: List[Dict[str, Any]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+
+        content_parts: List[Dict[str, Any]] = []
+        for image_bytes in images or []:
+            b64_str = base64.b64encode(image_bytes).decode("ascii")
+            content_parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{image_media_type};base64,{b64_str}"},
+                }
+            )
+        content_parts.append({"type": "text", "text": prompt})
+        messages.append({"role": "user", "content": content_parts})
+
+        raw = self._call(messages, json_mode=True, max_tokens=max_tokens)
+        return extract_json_object(raw)
+
+    def invoke_text(
+        self,
+        prompt: str,
+        system: Optional[str] = None,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+    ) -> str:
+        messages: List[Dict[str, Any]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        return self._call(messages, json_mode=False, max_tokens=max_tokens)
+
+
 def use_mock_bedrock() -> bool:
     """Mocks are opt-in only, and never inside a deployed Lambda."""
     if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
@@ -257,4 +351,12 @@ def get_bedrock_client(
     if use_mock_bedrock():
         logger.warning("USE_MOCK_BEDROCK is set; returning scripted Bedrock client")
         return MockBedrockClient()
+
+    groq_key = os.environ.get("GROQ_API_KEY", DEFAULT_GROQ_API_KEY)
+    bedrock_model = model_id or os.environ.get("BEDROCK_MODEL_ID", "")
+    if groq_key and (not bedrock_model or bedrock_model in ("THE_ID_THAT_WORKED", "anthropic.claude-3-5-sonnet-20240620-v1:0")):
+        logger.info("Using GroqClient for vision/extraction")
+        return GroqClient(api_key=groq_key)
+
     return BedrockClient(model_id=model_id, region_name=region_name)
+
