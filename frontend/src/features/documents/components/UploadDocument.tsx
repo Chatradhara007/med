@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { createDocument, uploadToS3 } from '../../../api/documents';
+import { createDocument, uploadToS3, deleteDocument } from '../../../api/documents';
 
 interface Props {
   onUploadComplete: (docId: string) => void;
@@ -38,6 +38,9 @@ export const UploadDocument = ({ onUploadComplete }: Props) => {
 
   const handleUpload = async () => {
     if (!file) return;
+    // Registered before the bytes exist. If the PUT then fails, this row is
+    // what has to be cleaned up.
+    let registeredDocId: string | null = null;
     try {
       setUploading(true);
       setError(null);
@@ -48,6 +51,7 @@ export const UploadDocument = ({ onUploadComplete }: Props) => {
         filename: file.name,
         content_type: file.type || 'application/pdf',
       });
+      registeredDocId = res.doc_id;
 
       // Step 2: PUT file directly to S3 using the presigned URL
       setUploadProgress('Encrypting & uploading to S3 storage bucket...');
@@ -59,7 +63,23 @@ export const UploadDocument = ({ onUploadComplete }: Props) => {
       onUploadComplete(res.doc_id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Upload failed';
-      setError(`Upload failed: ${msg}`);
+
+      // The pipeline is driven by the S3 object landing, so a document whose
+      // PUT failed never starts one: it sits at `uploading` forever, showing
+      // as In-Flight in the list with nothing behind it. Drop the row so a
+      // failed upload leaves no trace and the message below is the only
+      // outcome the patient has to act on.
+      if (registeredDocId) {
+        try {
+          await deleteDocument(registeredDocId);
+        } catch {
+          // Best effort. A stranded row is better than losing the real error.
+        }
+      }
+
+      setError(
+        `Upload failed: ${msg}. The file was not stored -- please try again.`,
+      );
     } finally {
       setUploading(false);
       setUploadProgress('');
