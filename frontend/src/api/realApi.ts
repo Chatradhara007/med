@@ -247,14 +247,8 @@ export const realApi = {
   },
 
   deleteDocument: async (id: string): Promise<void> => {
-    try {
-      await fetchWithAuth(`/documents/${id}`, {
-        method: 'DELETE',
-      });
-    } catch {
-      await fetchWithAuth(`/documents/${id}/delete`, {
-        method: 'POST',
-      });
-    }
+    await fetchWithAuth(`/documents/${id}`, {
+      method: 'DELETE',
+    });
   },
 };

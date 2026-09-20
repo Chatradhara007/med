@@ -20,7 +20,24 @@ export const DocumentsPage = () => {
       if (showLoading) setLoading(true);
       setError(null);
       const record = await getRecord();
-      setDocuments(record.recentDocuments);
+      const derivedDocs = record.recentDocuments.map((doc) => {
+        if (doc.status === 'review_required') {
+          const docMeds = record.activeMedications.filter((m) => m.provenance?.source?.doc_id === doc.id);
+          const docDiags = record.diagnoses.filter((d) => d.provenance?.source?.doc_id === doc.id);
+          const docLabs = record.labResults.filter((l) => l.provenance?.source?.doc_id === doc.id);
+
+          const totalEntities = docMeds.length + docDiags.length + docLabs.length;
+          const hasUnconfirmed = [...docMeds, ...docDiags, ...docLabs].some(
+            (e) => e.provenance?.status === 'needs_review'
+          );
+
+          if (totalEntities > 0 && !hasUnconfirmed) {
+            return { ...doc, status: 'ready' as const };
+          }
+        }
+        return doc;
+      });
+      setDocuments(derivedDocs);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load medical records.';
       setError(msg);

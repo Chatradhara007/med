@@ -128,8 +128,17 @@ export const DocumentDetailPage = () => {
     try {
       setError(null);
       const [doc, record] = await Promise.all([getDocument(id), getRecord()]);
+      const fields = buildExtractedFields(record, id);
+
+      if (doc.status === 'review_required' && fields.length > 0) {
+        const hasUnconfirmed = fields.some((f) => f.status === 'needs_review');
+        if (!hasUnconfirmed) {
+          doc.status = 'ready';
+        }
+      }
+
       setDocument(doc);
-      setExtractedFields(buildExtractedFields(record, id));
+      setExtractedFields(fields);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load document.';
       setError(msg);
@@ -151,11 +160,20 @@ export const DocumentDetailPage = () => {
     const interval = setInterval(async () => {
       try {
         const doc = await getDocument(id!);
-        setDocument(doc);
         if (TERMINAL_STATUSES.has(doc.status)) {
           clearInterval(interval);
           const record = await getRecord();
-          setExtractedFields(buildExtractedFields(record, id!));
+          const fields = buildExtractedFields(record, id!);
+          if (doc.status === 'review_required' && fields.length > 0) {
+            const hasUnconfirmed = fields.some((f) => f.status === 'needs_review');
+            if (!hasUnconfirmed) {
+              doc.status = 'ready';
+            }
+          }
+          setDocument(doc);
+          setExtractedFields(fields);
+        } else {
+          setDocument(doc);
         }
       } catch {
         clearInterval(interval);

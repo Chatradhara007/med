@@ -23,7 +23,7 @@ def cors_headers() -> Dict[str, str]:
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": allowed_origin(),
         "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Patient-Id,x-patient-id",
-        "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
         "Vary": "Origin",
     }
 
