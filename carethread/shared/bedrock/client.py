@@ -244,6 +244,24 @@ class MockBedrockClient(BedrockClientInterface):
 
 DEFAULT_GROQ_MODEL = "qwen/qwen3.8-27b"
 
+#: Model ids that mean "nothing usable is configured". The empty string is the
+#: unset case; the other two are a placeholder that was once deployed verbatim
+#: and the template default, which is only a valid id if the account happens to
+#: be entitled to it. A key never belongs in this file, so there is no default
+#: Groq credential -- `GROQ_API_KEY` is read from the environment or the
+#: fallback simply does not engage.
+PLACEHOLDER_MODEL_IDS = frozenset(
+    {
+        "",
+        "THE_ID_THAT_WORKED",
+        # The template default. Leaving it untouched means no model was chosen
+        # for this account, and an account without entitlement to it fails the
+        # call outright -- which is exactly when the Groq fallback should take
+        # over. Set BedrockModelId explicitly to force Bedrock.
+        "anthropic.claude-3-5-sonnet-20240620-v1:0",
+    }
+)
+
 
 class GroqClient(BedrockClientInterface):
     """Multimodal vision client backed by Groq API."""
@@ -352,10 +370,14 @@ def get_bedrock_client(
         logger.warning("USE_MOCK_BEDROCK is set; returning scripted Bedrock client")
         return MockBedrockClient()
 
-    groq_key = os.environ.get("GROQ_API_KEY", DEFAULT_GROQ_API_KEY)
-    bedrock_model = model_id or os.environ.get("BEDROCK_MODEL_ID", "")
-    if groq_key and (not bedrock_model or bedrock_model in ("THE_ID_THAT_WORKED", "anthropic.claude-3-5-sonnet-20240620-v1:0")):
-        logger.info("Using GroqClient for vision/extraction")
+    # Groq is the fallback for an account without Bedrock model entitlement.
+    # It is used only when a key is actually configured and no usable Bedrock
+    # model is: falling back silently while Bedrock is available would route
+    # clinical extraction to a different vendor than the operator chose.
+    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+    bedrock_model = (model_id or os.environ.get("BEDROCK_MODEL_ID", "")).strip()
+    if groq_key and bedrock_model in PLACEHOLDER_MODEL_IDS:
+        logger.info("No usable Bedrock model configured; using Groq for vision/extraction")
         return GroqClient(api_key=groq_key)
 
     return BedrockClient(model_id=model_id, region_name=region_name)

@@ -26,6 +26,18 @@ Parameters:
       Bedrock model ID (or inference-profile ID) used for classification and
       clinical extraction. Point this at the newest multimodal Claude model
       enabled in your account.
+  GroqApiKey:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: >-
+      Optional. Vision/extraction fallback for an account without Bedrock model
+      entitlement. Used only when BedrockModelId is left at its default or is a
+      placeholder. Leave empty to use Bedrock only.
+  GroqModel:
+    Type: String
+    Default: qwen/qwen3.8-27b
+    Description: Groq model used when the fallback is active.
   WebOrigin:
     Type: String
     Default: "*"
@@ -323,6 +335,8 @@ Resources:
       Environment:
         Variables:
           BEDROCK_MODEL_ID: !Ref BedrockModelId
+          GROQ_API_KEY: !Ref GroqApiKey
+          GROQ_MODEL: !Ref GroqModel
       Policies:
         # Read-only on the record: substitution never writes a prescription.
         - DynamoDBReadPolicy: { TableName: !Ref RecordTable }
@@ -351,6 +365,8 @@ Resources:
       Environment:
         Variables:
           BEDROCK_MODEL_ID: !Ref BedrockModelId
+          GROQ_API_KEY: !Ref GroqApiKey
+          GROQ_MODEL: !Ref GroqModel
           REMINDER_LAMBDA_ARN: !GetAtt ReminderFn.Arn
           EVENTBRIDGE_SCHEDULER_ROLE_ARN: !GetAtt SchedulerInvokeRole.Arn
       Policies:
@@ -421,6 +437,8 @@ Resources:
       Environment:
         Variables:
           BEDROCK_MODEL_ID: !Ref BedrockModelId
+          GROQ_API_KEY: !Ref GroqApiKey
+          GROQ_MODEL: !Ref GroqModel
       Policies:
         - S3ReadPolicy: { BucketName: !Ref DocBucket }
         - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
@@ -444,6 +462,8 @@ Resources:
       Environment:
         Variables:
           BEDROCK_MODEL_ID: !Ref BedrockModelId
+          GROQ_API_KEY: !Ref GroqApiKey
+          GROQ_MODEL: !Ref GroqModel
       Policies:
         - S3ReadPolicy: { BucketName: !Ref DocBucket }
         - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }
@@ -467,6 +487,8 @@ Resources:
       Environment:
         Variables:
           BEDROCK_MODEL_ID: !Ref BedrockModelId
+          GROQ_API_KEY: !Ref GroqApiKey
+          GROQ_MODEL: !Ref GroqModel
       Policies:
         - S3ReadPolicy: { BucketName: !Ref DocBucket }
         - DynamoDBCrudPolicy: { TableName: !Ref RecordTable }

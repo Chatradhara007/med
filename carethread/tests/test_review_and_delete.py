@@ -229,3 +229,59 @@ def test_cors_allows_delete():
     """A preflight that omits DELETE blocks the request before it is sent."""
     cors = _template()["Resources"]["HttpApi"]["Properties"]["CorsConfiguration"]
     assert "DELETE" in cors["AllowMethods"]
+
+
+# --------------------------------------------------------------------------
+# model client selection
+# --------------------------------------------------------------------------
+
+
+def test_client_selection_does_not_raise_without_mocks(monkeypatch):
+    """`get_bedrock_client` referenced an undefined DEFAULT_GROQ_API_KEY.
+
+    Every test set USE_MOCK_BEDROCK, which returns before that line, so a
+    NameError on the real path shipped green -- it would have taken down
+    classify and extract on the first upload after deploy.
+    """
+    from carethread.shared.bedrock.client import BedrockClient, get_bedrock_client
+
+    monkeypatch.delenv("USE_MOCK_BEDROCK", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20240620-v1:0")
+
+    assert isinstance(get_bedrock_client(), BedrockClient)
+
+
+def test_groq_is_used_only_when_configured_and_bedrock_is_not(monkeypatch):
+    from carethread.shared.bedrock.client import BedrockClient, GroqClient, get_bedrock_client
+
+    monkeypatch.delenv("USE_MOCK_BEDROCK", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "")
+    assert isinstance(get_bedrock_client(), GroqClient)
+
+    # An explicitly chosen model means the operator picked Bedrock; clinical
+    # extraction must not silently move to another vendor.
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-20250514-v1:0")
+    assert isinstance(get_bedrock_client(), BedrockClient)
+
+
+def test_no_api_key_is_committed_in_the_client():
+    import pathlib
+    import re
+
+    source = (
+        pathlib.Path(__file__).resolve().parents[1] / "shared" / "bedrock" / "client.py"
+    ).read_text()
+    assert not re.search(r"gsk_[A-Za-z0-9]{10,}", source), "a Groq API key is hardcoded"
+
+
+def test_template_exposes_the_groq_fallback_as_a_parameter():
+    """Otherwise the key can only be set by hand on each function."""
+    params = _template()["Parameters"]
+    assert params["GroqApiKey"]["NoEcho"] is True
+    assert params["GroqApiKey"]["Default"] == ""
+
+    extract_env = _template()["Resources"]["ExtractFn"]["Properties"]["Environment"]["Variables"]
+    assert "GROQ_API_KEY" in extract_env
